@@ -273,3 +273,72 @@ rule sample_qc_summary:
         "../envs/r-rectable.yaml"
     script:
         "../scripts/tsv2html.Rmd"
+
+
+rule doFasta:
+    """
+    Call consensus fasta of individual in filtered regions.
+    """
+    input:
+        bam="results/datasets/{dataset}/bams/{sample}.{ref}.bam",
+        bai="results/datasets/{dataset}/bams/{sample}.{ref}.bam.bai",
+        sites="results/datasets/{dataset}/filters/combined/{dataset}.{ref}_{sites}-filts.sites"
+    output:
+        fa="results/datasets/{dataset}/fastas/{sample}.{ref}.consensus_{sites}-filts.fa"
+    log:
+        "logs/{dataset}/angsd/doFasta/{sample}.{ref}.consensus_{sites}-filts.log"
+    benchmark:
+        "benchmarks/{dataset}/angsd/doFasta/{sample}.{ref}.consensus_{sites}-filts.fa"
+    container:
+        angsd_container
+    resources:
+        runtime=lambda w: attempt*360
+    params:
+        extra=config["params"]["angsd"]["extra"],
+        mapQ=config["mapQ"],
+        baseQ=config["baseQ"],
+        out=lambda w, output: os.path.splitext(output.arg)[0],
+    shell:
+        """
+        angsd -doFasta 2 -i {input.bam} -nThreads {threads} {params.extra} \
+            -minMapQ {params.mapQ} -minQ {params.baseQ} -sites {input.sites} \
+            -out {params.out}
+        """
+
+
+rule doAncError:
+    """
+    Calculates error rates per individual using an 'error free' individual and
+    an outgroup. Currently, the outgroup is forced to be the reference, so this
+    is only suitable if that is truly the case.
+    """
+    input:
+        ref="results/ref/{ref}/{ref}.fa",
+        errfree=expand(
+            "results/datasets/{{dataset}}/fastas/{sample}.{{ref}}.consensus_{{sites}}-filts.fa",
+            sample=config["params"]["angsd"]["error_free_ind"]
+        ),
+        bam="results/datasets/{dataset}/bams/{sample}.{ref}.bam",
+        bai="results/datasets/{dataset}/bams/{sample}.{ref}.bam.bai",
+        sites="results/datasets/{dataset}/filters/combined/{dataset}.{ref}_{sites}-filts.sites"
+    output:
+        err="results/datasets/{dataset}/qc/doAncError/{sample}.{ref}_{sites}-filts.ancError"
+    log:
+        "logs/{dataset}/angsd/doAncError/{sample}.{ref}_{sites}-filts.log"
+    benchmark:
+        "benchmarks/{dataset}/angsd/doAncError/{sample}.{ref}_{sites}-filts.log"
+    container:
+        angsd_container
+    resources:
+        runtime=lambda w: attempt*360
+    params:
+        extra=config["params"]["angsd"]["extra"],
+        mapQ=config["mapQ"],
+        baseQ=config["baseQ"],
+        out=lambda w, output: os.path.splitext(output.arg)[0],
+    shell:
+        """
+        angsd -doAncError 2 -i {input.bam} -anc {input.ref} -ref {input.errfree} \
+            -nThreads {threads} {params.extra} -minMapQ {params.mapQ} \
+            -minQ {params.baseQ} -sites {input.sites} -out {params.out}
+        """
