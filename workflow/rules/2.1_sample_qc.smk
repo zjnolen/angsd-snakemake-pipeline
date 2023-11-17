@@ -282,15 +282,15 @@ rule doFasta:
     input:
         bam="results/datasets/{dataset}/bams/{sample}.{ref}.bam",
         bai="results/datasets/{dataset}/bams/{sample}.{ref}.bam.bai",
-        sites="results/datasets/{dataset}/filters/combined/{dataset}.{ref}_{sites}-filts.sites",
-        idx="results/datasets/{dataset}/filters/combined/{dataset}.{ref}_{sites}-filts.sites.idx",
+        #sites="results/datasets/{dataset}/filters/combined/{dataset}.{ref}_{sites}-filts.sites",
+        #idx="results/datasets/{dataset}/filters/combined/{dataset}.{ref}_{sites}-filts.sites.idx",
     output:
-        fa="results/datasets/{dataset}/fastas/{sample}.{ref}.consensus_{sites}-filts.fa.gz",
-        arg="results/datasets/{dataset}/fastas/{sample}.{ref}.consensus_{sites}-filts.arg"
+        fa="results/datasets/{dataset}/fastas/{sample}.{ref}.consensus.fa.gz",
+        arg="results/datasets/{dataset}/fastas/{sample}.{ref}.consensus.arg"
     log:
-        "logs/{dataset}/angsd/doFasta/{sample}.{ref}.consensus_{sites}-filts.log",
+        "logs/{dataset}/angsd/doFasta/{sample}.{ref}.consensus.log",
     benchmark:
-        "benchmarks/{dataset}/angsd/doFasta/{sample}.{ref}.consensus_{sites}-filts.log"
+        "benchmarks/{dataset}/angsd/doFasta/{sample}.{ref}.consensus.log"
     container:
         angsd_container
     resources:
@@ -303,8 +303,8 @@ rule doFasta:
     shell:
         """
         angsd -doFasta 2 -i {input.bam} -nThreads {threads} {params.extra} \
-            -minMapQ {params.mapQ} -minQ {params.baseQ} -sites {input.sites} \
-            -doCounts 1 -out {params.out} 2> {log}
+            -minMapQ {params.mapQ} -minQ {params.baseQ} -doCounts 1 -out {params.out} \
+            2> {log}
         """
 
 
@@ -341,14 +341,14 @@ rule doAncError:
         ),
         bam="results/datasets/{dataset}/bams/{sample}.{ref}.bam",
         bai="results/datasets/{dataset}/bams/{sample}.{ref}.bam.bai",
-        sites="results/datasets/{dataset}/filters/combined/{dataset}.{ref}_{sites}-filts.sites",
-        idx="results/datasets/{dataset}/filters/combined/{dataset}.{ref}_{sites}-filts.sites.idx",
+        # sites="results/datasets/{dataset}/filters/combined/{dataset}.{ref}_{sites}-filts.sites",
+        # idx="results/datasets/{dataset}/filters/combined/{dataset}.{ref}_{sites}-filts.sites.idx",
     output:
-        err="results/datasets/{dataset}/qc/doAncError/{sample}/{sample}.{ref}_{sites}-filts.ancError",
+        err="results/datasets/{dataset}/qc/doAncError/{sample}/{sample}.{ref}.ancError",
     log:
-        "logs/{dataset}/angsd/doAncError/{sample}.{ref}_{sites}-filts.log",
+        "logs/{dataset}/angsd/doAncError/{sample}.{ref}.log",
     benchmark:
-        "benchmarks/{dataset}/angsd/doAncError/{sample}.{ref}_{sites}-filts.log"
+        "benchmarks/{dataset}/angsd/doAncError/{sample}.{ref}.log"
     container:
         angsd_container
     resources:
@@ -362,7 +362,7 @@ rule doAncError:
         """
         angsd -doAncError 2 -i {input.bam} -anc {input.ref} -ref {input.errfree} \
             -nThreads {threads} {params.extra} -minMapQ {params.mapQ} \
-            -minQ {params.baseQ} -sites {input.sites} -out {params.out} 2> {log}
+            -minQ {params.baseQ} -out {params.out} 2> {log}
         """
 
 
@@ -371,14 +371,14 @@ rule estError:
     Estimates error rate for individuals from ANGSD outputs
     """
     input:
-        "results/datasets/{dataset}/qc/doAncError/{sample}/{sample}.{ref}_{sites}-filts.ancError",
+        "results/datasets/{dataset}/qc/doAncError/{sample}/{sample}.{ref}.ancError",
     output:
-        table="results/datasets/{dataset}/qc/doAncError/{sample}/{sample}.{ref}_{sites}-filts.errorEst.txt",
-        pdf="results/datasets/{dataset}/qc/doAncError/{sample}/{sample}.{ref}_{sites}-filts.errorEst.pdf",
+        table="results/datasets/{dataset}/qc/doAncError/{sample}/{sample}.{ref}.errorEst.txt",
+        pdf="results/datasets/{dataset}/qc/doAncError/{sample}/{sample}.{ref}.errorEst.pdf",
     log:
-        "logs/{dataset}/angsd/estError/{sample}.{ref}_{sites}-filts.log",
+        "logs/{dataset}/angsd/estError/{sample}.{ref}.log",
     benchmark:
-        "benchmarks/{dataset}/angsd/estError/{sample}.{ref}_{sites}-filts.log"
+        "benchmarks/{dataset}/angsd/estError/{sample}.{ref}.log"
     conda:
         "../envs/r.yaml"
     shadow:
@@ -403,16 +403,16 @@ rule estError:
 rule cat_error:
     input:
         expand(
-            "results/datasets/{{dataset}}/qc/doAncError/{sample}/{sample}.{{ref}}_{{sites}}-filts.errorEst.txt",
+            "results/datasets/{{dataset}}/qc/doAncError/{sample}/{sample}.{{ref}}.errorEst.txt",
             sample=samples.index,
         ),
     output:
-        est="results/datasets/{dataset}/qc/doAncError/{dataset}.{ref}_all_{sites}-filts.errorEst.tsv",
-        overallest="results/datasets/{dataset}/qc/doAncError/{dataset}.{ref}_all_{sites}-filts.errorEstOverall.tsv",
+        est="results/datasets/{dataset}/qc/doAncError/{dataset}.{ref}_all.errorEst.tsv",
+        overallest="results/datasets/{dataset}/qc/doAncError/{dataset}.{ref}_all.errorEstOverall.tsv",
     log:
-        "logs/{dataset}/angsd/estError/{dataset}.{ref}_all_{sites}-filts_combine.log",
+        "logs/{dataset}/angsd/estError/{dataset}.{ref}_all_combine.log",
     benchmark:
-        "benchmarks/{dataset}/angsd/estError/{dataset}.{ref}_all_{sites}-filts_combine.log"
+        "benchmarks/{dataset}/angsd/estError/{dataset}.{ref}_all_combine.log"
     conda:
         "../envs/shell.yaml"
     shell:
