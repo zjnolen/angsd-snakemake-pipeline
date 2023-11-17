@@ -388,14 +388,14 @@ rule estError:
         (cd results/datasets/{wildcards.dataset}/qc/doAncError/{wildcards.sample}
         Rscript \
             <(curl https://raw.githubusercontent.com/ANGSD/angsd/66a5961fcbf3b691cf39f96f4bd90868efa002ea/R/estError.R) \
-            file={wildcards.sample}.{wildcards.ref}_{wildcards.sites}-filts.ancError
+            file={wildcards.sample}.{wildcards.ref}.ancError
         
         for i in errorEst*; do
-            mv $i {wildcards.sample}.{wildcards.ref}_{wildcards.sites}-filts.$i
+            mv $i {wildcards.sample}.{wildcards.ref}.$i
         done
 
         sed -i 's/ind/{wildcards.sample}/g' \
-            {wildcards.sample}.{wildcards.ref}_{wildcards.sites}-filts.errorEst.txt) \
+            {wildcards.sample}.{wildcards.ref}.errorEst.txt) \
             2> {log}
         """
 
