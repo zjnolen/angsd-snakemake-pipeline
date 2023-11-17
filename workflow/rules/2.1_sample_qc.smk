@@ -282,28 +282,43 @@ rule doFasta:
     input:
         bam="results/datasets/{dataset}/bams/{sample}.{ref}.bam",
         bai="results/datasets/{dataset}/bams/{sample}.{ref}.bam.bai",
-        sites="results/datasets/{dataset}/filters/combined/{dataset}.{ref}_{sites}-filts.sites"
+        sites="results/datasets/{dataset}/filters/combined/{dataset}.{ref}_{sites}-filts.sites",
+        idx="results/datasets/{dataset}/filters/combined/{dataset}.{ref}_{sites}-filts.sites.idx",
     output:
-        fa="results/datasets/{dataset}/fastas/{sample}.{ref}.consensus_{sites}-filts.fa"
+        fa="results/datasets/{dataset}/fastas/{sample}.{ref}.consensus_{sites}-filts.fa.gz",
     log:
-        "logs/{dataset}/angsd/doFasta/{sample}.{ref}.consensus_{sites}-filts.log"
+        "logs/{dataset}/angsd/doFasta/{sample}.{ref}.consensus_{sites}-filts.log",
     benchmark:
-        "benchmarks/{dataset}/angsd/doFasta/{sample}.{ref}.consensus_{sites}-filts.fa"
+        "benchmarks/{dataset}/angsd/doFasta/{sample}.{ref}.consensus_{sites}-filts.log"
     container:
         angsd_container
     resources:
-        runtime=lambda w: attempt*360
+        runtime=lambda w, attempt: attempt * 360,
     params:
         extra=config["params"]["angsd"]["extra"],
         mapQ=config["mapQ"],
         baseQ=config["baseQ"],
-        out=lambda w, output: os.path.splitext(output.arg)[0],
+        out=lambda w, output: os.path.splitext(output.fa)[0],
     shell:
         """
         angsd -doFasta 2 -i {input.bam} -nThreads {threads} {params.extra} \
             -minMapQ {params.mapQ} -minQ {params.baseQ} -sites {input.sites} \
-            -out {params.out}
+            -doCounts 1 -out {params.out}
         """
+
+
+rule samtools_faidx_sample_cons:
+    """Index reference genome using samtools (fai index used by several tools)"""
+    input:
+        "results/datasets/{dataset}/fastas/{sample}.{ref}.consensus_{sites}-filts.fa.gz",
+    output:
+        "results/datasets/{dataset}/fastas/{sample}.{ref}.consensus_{sites}-filts.fa.gz.fai",
+    log:
+        "logs/{dataset}/samtools/faidx/{sample}.{ref}.consensus_{sites}-filts.log",
+    benchmark:
+        "benchmarks/{dataset}/samtools/faidx/{sample}.{ref}.consensus_{sites}-filts.log"
+    wrapper:
+        "v2.4.0/bio/samtools/faidx"
 
 
 rule doAncError:
@@ -314,31 +329,97 @@ rule doAncError:
     """
     input:
         ref="results/ref/{ref}/{ref}.fa",
+        fai="results/ref/{ref}/{ref}.fa.fai",
         errfree=expand(
-            "results/datasets/{{dataset}}/fastas/{sample}.{{ref}}.consensus_{{sites}}-filts.fa",
-            sample=config["params"]["angsd"]["error_free_ind"]
+            "results/datasets/{{dataset}}/fastas/{sample}.{{ref}}.consensus_{{sites}}-filts.fa.gz",
+            sample=config["params"]["angsd"]["error_free_ind"],
+        ),
+        errfreefai=expand(
+            "results/datasets/{{dataset}}/fastas/{sample}.{{ref}}.consensus_{{sites}}-filts.fa.gz.fai",
+            sample=config["params"]["angsd"]["error_free_ind"],
         ),
         bam="results/datasets/{dataset}/bams/{sample}.{ref}.bam",
         bai="results/datasets/{dataset}/bams/{sample}.{ref}.bam.bai",
-        sites="results/datasets/{dataset}/filters/combined/{dataset}.{ref}_{sites}-filts.sites"
+        sites="results/datasets/{dataset}/filters/combined/{dataset}.{ref}_{sites}-filts.sites",
+        idx="results/datasets/{dataset}/filters/combined/{dataset}.{ref}_{sites}-filts.sites.idx",
     output:
-        err="results/datasets/{dataset}/qc/doAncError/{sample}.{ref}_{sites}-filts.ancError"
+        err="results/datasets/{dataset}/qc/doAncError/{sample}/{sample}.{ref}_{sites}-filts.ancError",
     log:
-        "logs/{dataset}/angsd/doAncError/{sample}.{ref}_{sites}-filts.log"
+        "logs/{dataset}/angsd/doAncError/{sample}.{ref}_{sites}-filts.log",
     benchmark:
         "benchmarks/{dataset}/angsd/doAncError/{sample}.{ref}_{sites}-filts.log"
     container:
         angsd_container
     resources:
-        runtime=lambda w: attempt*360
+        runtime=lambda w, attempt: attempt * 360,
     params:
         extra=config["params"]["angsd"]["extra"],
         mapQ=config["mapQ"],
         baseQ=config["baseQ"],
-        out=lambda w, output: os.path.splitext(output.arg)[0],
+        out=lambda w, output: os.path.splitext(output.err)[0],
     shell:
         """
         angsd -doAncError 2 -i {input.bam} -anc {input.ref} -ref {input.errfree} \
             -nThreads {threads} {params.extra} -minMapQ {params.mapQ} \
             -minQ {params.baseQ} -sites {input.sites} -out {params.out}
+        """
+
+
+rule estError:
+    """
+    Estimates error rate for individuals from ANGSD outputs
+    """
+    input:
+        "results/datasets/{dataset}/qc/doAncError/{sample}/{sample}.{ref}_{sites}-filts.ancError",
+    output:
+        table="results/datasets/{dataset}/qc/doAncError/{sample}/{sample}.{ref}_{sites}-filts.errorEst.txt",
+        pdf="results/datasets/{dataset}/qc/doAncError/{sample}/{sample}.{ref}_{sites}-filts.errorEst.pdf",
+    log:
+        "logs/{dataset}/angsd/estError/{sample}.{ref}_{sites}-filts.log",
+    benchmark:
+        "benchmarks/{dataset}/angsd/estError/{sample}.{ref}_{sites}-filts.log"
+    conda:
+        "../envs/r.yaml"
+    shadow:
+        "minimal"
+    shell:
+        """
+        (cd results/datasets/{wildcards.dataset}/qc/doAncError/{wildcards.sample}
+        Rscript \
+            <(curl https://raw.githubusercontent.com/ANGSD/angsd/66a5961fcbf3b691cf39f96f4bd90868efa002ea/R/estError.R) \
+            file={wildcards.sample}.{wildcards.ref}_{wildcards.sites}-filts.ancError
+        
+        for i in errorEst*; do
+            mv $i {wildcards.sample}.{wildcards.ref}_{wildcards.sites}-filts.$i
+        done
+
+        sed -i 's/ind/{wildcards.sample}/g' \
+            {wildcards.sample}.{wildcards.ref}_{wildcards.sites}-filts.errorEst.txt) \
+            2> {log}
+        """
+
+
+rule cat_error:
+    input:
+        expand(
+            "results/datasets/{{dataset}}/qc/doAncError/{sample}/{sample}.{{ref}}_{{sites}}-filts.errorEst.txt",
+            sample=samples.index,
+        ),
+    output:
+        est="results/datasets/{dataset}/qc/doAncError/{dataset}.{ref}_all_{sites}-filts.errorEst.tsv",
+        overallest="results/datasets/{dataset}/qc/doAncError/{dataset}.{ref}_all_{sites}-filts.errorEstOverall.tsv",
+    log:
+        "logs/{dataset}/angsd/estError/{dataset}.{ref}_all_{sites}-filts_combine.log",
+    benchmark:
+        "benchmarks/{dataset}/angsd/estError/{dataset}.{ref}_all_{sites}-filts_combine.log"
+    conda:
+        "../envs/shell.yaml"
+    shell:
+        """
+        (echo 'C->A    G->A    T->A    A->C    G->C    T->C    A->G    C->G    T->G    A->T    C->T    G->T' > {output.est}
+        echo 'sample    error%' > {output.overallest}
+        for i in {input}; do
+            head -n2 $i | tail -n1 | tr -d '\"' >> {output.est}
+            tail -n1 $i | tr ' ' '\t' | tr -d '\"' | cut -f1,2 >> {output.overallest}
+        done) 2> {log}
         """

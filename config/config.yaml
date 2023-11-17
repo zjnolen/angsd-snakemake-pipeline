@@ -50,6 +50,7 @@ analyses:
   # quality control
   qualimap: true
   damageprofiler: true
+  doAncError: false
   # population genomic analyses
   estimate_ld: false
   ld_decay: false
@@ -97,6 +98,7 @@ params:
     extra: ""
     snp_pval: "1e-6"
     min_maf: 0.05
+    error_free_ind: ""
   ngsld:
     max_kb_dist_est-ld: 4000
     max_kb_dist_decay: 100
