@@ -304,7 +304,7 @@ rule doFasta:
         """
         angsd -doFasta 2 -i {input.bam} -nThreads {threads} {params.extra} \
             -minMapQ {params.mapQ} -minQ {params.baseQ} -sites {input.sites} \
-            -doCounts 1 -out {params.out}
+            -doCounts 1 -out {params.out} 2> {log}
         """
 
 
@@ -362,7 +362,7 @@ rule doAncError:
         """
         angsd -doAncError 2 -i {input.bam} -anc {input.ref} -ref {input.errfree} \
             -nThreads {threads} {params.extra} -minMapQ {params.mapQ} \
-            -minQ {params.baseQ} -sites {input.sites} -out {params.out}
+            -minQ {params.baseQ} -sites {input.sites} -out {params.out} 2> {log}
         """
 
 
