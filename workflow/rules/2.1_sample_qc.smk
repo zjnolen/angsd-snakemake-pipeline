@@ -286,6 +286,7 @@ rule doFasta:
         idx="results/datasets/{dataset}/filters/combined/{dataset}.{ref}_{sites}-filts.sites.idx",
     output:
         fa="results/datasets/{dataset}/fastas/{sample}.{ref}.consensus_{sites}-filts.fa.gz",
+        arg="results/datasets/{dataset}/fastas/{sample}.{ref}.consensus_{sites}-filts.arg"
     log:
         "logs/{dataset}/angsd/doFasta/{sample}.{ref}.consensus_{sites}-filts.log",
     benchmark:
@@ -298,7 +299,7 @@ rule doFasta:
         extra=config["params"]["angsd"]["extra"],
         mapQ=config["mapQ"],
         baseQ=config["baseQ"],
-        out=lambda w, output: os.path.splitext(output.fa)[0],
+        out=lambda w, output: os.path.splitext(output.arg)[0],
     shell:
         """
         angsd -doFasta 2 -i {input.bam} -nThreads {threads} {params.extra} \
