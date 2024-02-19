@@ -330,7 +330,7 @@ rule doFasta:
         out=lambda w, output: os.path.splitext(output.arg)[0],
     shell:
         """
-        angsd -doFasta 2 -i {input.bam} -nThreads {threads} {params.extra} \
+        angsd -doFasta 1 -i {input.bam} -nThreads {threads} {params.extra} \
             -minMapQ {params.mapQ} -minQ {params.baseQ} -doCounts 1 -out {params.out} \
             2> {log}
         """
@@ -339,13 +339,13 @@ rule doFasta:
 rule samtools_faidx_sample_cons:
     """Index reference genome using samtools (fai index used by several tools)"""
     input:
-        "results/datasets/{dataset}/fastas/{sample}.{ref}.consensus_{sites}-filts.fa.gz",
+        "results/datasets/{dataset}/fastas/{sample}.{ref}.consensus.fa.gz",
     output:
-        "results/datasets/{dataset}/fastas/{sample}.{ref}.consensus_{sites}-filts.fa.gz.fai",
+        "results/datasets/{dataset}/fastas/{sample}.{ref}.consensus.fa.gz.fai",
     log:
-        "logs/{dataset}/samtools/faidx/{sample}.{ref}.consensus_{sites}-filts.log",
+        "logs/{dataset}/samtools/faidx/{sample}.{ref}.consensus.log",
     benchmark:
-        "benchmarks/{dataset}/samtools/faidx/{sample}.{ref}.consensus_{sites}-filts.log"
+        "benchmarks/{dataset}/samtools/faidx/{sample}.{ref}.consensus.log"
     wrapper:
         "v2.4.0/bio/samtools/faidx"
 
@@ -360,11 +360,11 @@ rule doAncError:
         ref="results/ref/{ref}/{ref}.fa",
         fai="results/ref/{ref}/{ref}.fa.fai",
         errfree=expand(
-            "results/datasets/{{dataset}}/fastas/{sample}.{{ref}}.consensus_{{sites}}-filts.fa.gz",
+            "results/datasets/{{dataset}}/fastas/{sample}.{{ref}}.consensus.fa.gz",
             sample=config["params"]["angsd"]["error_free_ind"],
         ),
         errfreefai=expand(
-            "results/datasets/{{dataset}}/fastas/{sample}.{{ref}}.consensus_{{sites}}-filts.fa.gz.fai",
+            "results/datasets/{{dataset}}/fastas/{sample}.{{ref}}.consensus.fa.gz.fai",
             sample=config["params"]["angsd"]["error_free_ind"],
         ),
         bam="results/datasets/{dataset}/bams/{sample}.{ref}.bam",
