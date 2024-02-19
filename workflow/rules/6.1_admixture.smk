@@ -9,7 +9,11 @@ rule ngsAdmix:
     replicates have been performed.
     """
     input:
-        beagle="results/datasets/{dataset}/beagles/pruned/{dataset}.{ref}_{population}{dp}_{sites}-filts_pruned.beagle.gz",
+        beagle=expand(
+            "results/datasets/{{dataset}}/beagles/pruned/{{dataset}}.{{ref}}_{{population}}{{dp}}_{{sites}}-filts.pruned_maxkbdist-{maxkb}_minr2-{r2}.beagle.gz",
+            maxkb=config["params"]["ngsld"]["max_kb_dist_pruning_dataset"],
+            r2=config["params"]["ngsld"]["pruning_min-weight_dataset"],
+        ),
     output:
         qopt="results/datasets/{dataset}/analyses/ngsadmix/{dataset}.{ref}_{population}{dp}_{sites}-filts_K{kvalue}.qopt",
         fopt="results/datasets/{dataset}/analyses/ngsadmix/{dataset}.{ref}_{population}{dp}_{sites}-filts_K{kvalue}.fopt.gz",
@@ -68,7 +72,11 @@ rule evalAdmix:
     Perform evalAdmix analysis to get residuals on best fitting replicate for a given K.
     """
     input:
-        beagle="results/datasets/{dataset}/beagles/pruned/{dataset}.{ref}_{population}{dp}_{sites}-filts_pruned.beagle.gz",
+        beagle=expand(
+            "results/datasets/{{dataset}}/beagles/pruned/{{dataset}}.{{ref}}_{{population}}{{dp}}_{{sites}}-filts.pruned_maxkbdist-{maxkb}_minr2-{r2}.beagle.gz",
+            maxkb=config["params"]["ngsld"]["max_kb_dist_pruning_dataset"],
+            r2=config["params"]["ngsld"]["pruning_min-weight_dataset"],
+        ),
         qopt="results/datasets/{dataset}/analyses/ngsadmix/{dataset}.{ref}_{population}{dp}_{sites}-filts_K{kvalue}.qopt",
         fopt="results/datasets/{dataset}/analyses/ngsadmix/{dataset}.{ref}_{population}{dp}_{sites}-filts_K{kvalue}.fopt.gz",
     output:

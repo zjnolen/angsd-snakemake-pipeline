@@ -18,17 +18,13 @@ reference:
   exclude: []
   min_size:
 
+ancestral:
+
 #===================== Sample Set Configuration =======================#
 
 exclude_ind: []
 
 excl_pca-admix: []
-
-#==================== Downsampling Configuration ======================#
-
-# untested, not recommended for now
-
-downsample_cov:
 
 #====================== Analysis Selection ============================#
 
@@ -38,19 +34,22 @@ analyses:
   # mapping options
   mapping:
     historical_only_collapsed: true
+    historical_collapsed_aligner: "aln"
   # filtering
-  genmap: true
+  pileup-mappability: true
   repeatmasker:
+    bed:
     local_lib:
     dfam_lib:
     build_lib: true
-  extreme_depth: [0.5, 1.5]
+  extreme_depth: true
   dataset_missing_data: 0.8
   population_missing_data: 0.8
   # quality control
   qualimap: true
   damageprofiler: true
   doAncError: false
+  mapdamage_rescale: true
   # population genomic analyses
   estimate_ld: false
   ld_decay: false
@@ -60,6 +59,37 @@ analyses:
     ngsrelate: false
     ibsrelate_ibs: false
     ibsrelate_sfs: false
+  1dsfs: false
+  1dsfs_boot: false
+  2dsfs: false
+  2dsfs_boot: false
+  thetas_angsd: false
+  heterozygosity_angsd: false
+  fst_angsd:
+    populations: false
+    individuals: false
+  inbreeding_ngsf-hmm: false
+  ibs_matrix: false
+
+#==================== Downsampling Configuration ======================#
+
+subsample_dp:
+
+subsample_redo_filts:
+
+subsample_analyses:
+  estimate_ld: false
+  ld_decay: false
+  pca_pcangsd: false
+  admix_ngsadmix: false
+  relatedness:
+    ngsrelate: false
+    ibsrelate_ibs: false
+    ibsrelate_sfs: false
+  1dsfs: false
+  1dsfs_boot: false
+  2dsfs: false
+  2dsfs_boot: false
   thetas_angsd: false
   heterozygosity_angsd: false
   fst_angsd:
@@ -81,35 +111,54 @@ mapQ: 30
 baseQ: 30
 
 params:
-
+  clipoverlap:
+    clip_user_provided_bams: true
   genmap:
     K: "100"
     E: "2"
     map_thresh: 1
+  extreme_depth_filt:
+    method: "median"
+    bounds: [ 0.5, 1.5 ]
+    filt-on-dataset: true
+    filt-on-depth-classes: true
   fastp:
     extra: "-p -g" # don't put --merge or --overlap_len_require here, they're implicit
-    min_overlap_mod: 30
-    min_overlap_hist: 15
+    min_overlap_hist: 20
+  bwa_aln:
+    extra: "-l 16500 -n 0.01 -o 2"
   picard:
     MarkDuplicates: "--REMOVE_DUPLICATES true --OPTICAL_DUPLICATE_PIXEL_DISTANCE 2500"
   angsd:
     gl_model: 2 # gl_model - 1=SAMtools, 2=GATK, 3=SOAPsnp, 4=SYK
     maxdepth: 1000
     extra: ""
+    extra_saf: ""
+    extra_beagle: ""
+    domajorminor: 1 # Currently only compatible with values 1, 2, 4, 5
+    domaf: 1
     snp_pval: "1e-6"
-    min_maf: 0.05
+    min_maf: -1 # Set -1 to disable
+    mindepthind_heterozygosity: 3
     error_free_ind: ""
   ngsld:
     max_kb_dist_est-ld: 4000
-    max_kb_dist_decay: 100
-    max_kb_dist_pruning: 100
     rnd_sample_est-ld: 0.001
+    max_kb_dist_decay: 100
     rnd_sample_decay: 0.001
     fit_LDdecay_extra: "--fit_level 100 --fit_boot 100 --plot_size 3,6 --plot_data --plot_no_legend --plot_y_lim 0.5"
     fit_LDdecay_n_correction: true
-    pruning_min-weight: 0.1
+    max_kb_dist_pruning_dataset: 100 # used for PCA, Admix, NGSrelate, not ngsF-HMM
+    pruning_min-weight_dataset: 0.1 # used for PCA, Admix, NGSrelate, not ngsF-HMM
+  ngsf-hmm:
+    estimate_in_pops: true
+    prune: true
+    max_kb_dist_pruning_pop: 100 # used only for ngsf-hmm
+    pruning_min-weight_pop: 0.8 # used only for ngsf-hmm
+    min_roh_length: 50000
+    roh_bins: [ 100000, 250000, 500000, 1000000, 2500000, 5000000 ] # in ascending order, bins are between adjacent values and between min_roh_length and value 1 and the last value and infinity
   realsfs:
-    fold: 1 # Should only be set to 1 for now
+    fold: 1 # Should only be set to 1, unless ancestral reference is given above
     sfsboot: 100
   fst:
     whichFst: 1

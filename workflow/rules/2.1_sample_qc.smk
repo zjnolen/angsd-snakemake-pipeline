@@ -10,9 +10,9 @@ rule samtools_flagstat:
     Estimate statistics for samtools flags. Needed to assess mapping percentage
     """
     input:
-        "results/mapping/mapped/{prefix}.bam",
+        "results/{prefix}.bam",
     output:
-        "results/mapping/mapped/{prefix}.flagstat",
+        "results/{prefix}.flagstat",
     log:
         "logs/mapping/samtools/flagstat/{prefix}.log",
     benchmark:
@@ -48,6 +48,35 @@ rule qualimap:
         "v2.6.0/bio/qualimap/bamqc"
 
 
+rule qualimap_userprovided:
+    """
+    Estimate general mapping statistics for each user-provided sample bam file.
+    """
+    input:
+        unpack(get_final_bam),
+    output:
+        directory(
+            "results/datasets/{dataset}/qc/user-provided-bams/qualimap/{sample}.{ref}"
+        ),
+        pdf=report(
+            "results/datasets/{dataset}/qc/user-provided-bams/qualimap/{sample}.{ref}/report.pdf",
+            category="Quality Control",
+            subcategory="Mapping Reports",
+            labels={"Sample": "{sample}", "Ref": "{ref}", "Type": "Qualimap Report"},
+        ),
+        txt="results/datasets/{dataset}/qc/user-provided-bams/qualimap/{sample}.{ref}/genome_results.txt",
+    params:
+        extra="-outformat pdf",
+    log:
+        "logs/mapping/qualimap/{dataset}.{sample}.{ref}.log",
+    benchmark:
+        "benchmarks/mapping/qualimap/{dataset}.{sample}.{ref}.log"
+    resources:
+        runtime=360,
+    wrapper:
+        "v2.6.0/bio/qualimap/bamqc"
+
+
 rule endo_cont:
     """
     Estimate the proportion of reads mapping to the reference as a proxy for endogenous
@@ -56,13 +85,13 @@ rule endo_cont:
     input:
         unpack(get_endo_cont_stat),
     output:
-        endo="results/mapping/qc/endogenous_content/{sample}.{ref}.endo",
+        endo="results/datasets/{dataset}/qc/endogenous_content/{dataset}.{sample}.{ref}.endo",
     conda:
         "../envs/shell.yaml"
     log:
-        "logs/mapping/endogenous_content/{sample}.{ref}.log",
+        "logs/datasets/{dataset}/qc/endogenous_content/{dataset}.{sample}.{ref}.log",
     benchmark:
-        "benchmarks/mapping/endogenous_content/{sample}.{ref}.log"
+        "benchmarks/datasets/{dataset}/qc/endogenous_content/{dataset}.{sample}.{ref}.log"
     script:
         "../scripts/calc_endocont.sh"
 
@@ -73,7 +102,7 @@ rule compile_endo_cont:
     """
     input:
         lambda w: expand(
-            "results/mapping/qc/endogenous_content/{sample}.{{ref}}.endo",
+            "results/datasets/{{dataset}}/qc/endogenous_content/{{dataset}}.{sample}.{{ref}}.endo",
             sample=get_samples_from_pop("all"),
         ),
     output:
@@ -88,7 +117,7 @@ rule compile_endo_cont:
         runtime=lambda wildcards, attempt: attempt * 15,
     shell:
         """
-        (printf "sample\tperc.merged.map\tperc.paired.map\tperc.total.map\n" > {output}
+        (printf "sample\tperc.collapsed.map\tperc.uncollapsed.map\tperc.total.map\n" > {output}
         cat {input} >> {output}) 2> {log}
         """
 
@@ -133,12 +162,11 @@ rule ind_filtered_depth:
     depth of positions that will go into likelihood calculations
     """
     input:
+        unpack(filt_depth),
         bamlist="results/datasets/{dataset}/bamlists/{dataset}.{ref}_{population}{dp}.bamlist",
         bams=get_bamlist_bams,
         bais=get_bamlist_bais,
         ref="results/ref/{ref}/{ref}.fa",
-        sites="results/datasets/{dataset}/filters/combined/{dataset}.{ref}{dp}_{sites}-filts.sites",
-        idx="results/datasets/{dataset}/filters/combined/{dataset}.{ref}{dp}_{sites}-filts.sites.idx",
     output:
         sample_hist="results/datasets/{dataset}/qc/ind_depth/filtered/{dataset}.{ref}_{population}{dp}_{sites}-filts.depthSample",
         global_hist=temp(

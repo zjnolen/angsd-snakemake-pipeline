@@ -7,7 +7,13 @@ rule ngsf_hmm:
     Estimate IBD tracts within individual genomes.
     """
     input:
-        beagle="results/datasets/{dataset}/beagles/pruned/{dataset}.{ref}_{population}{dp}_{sites}-filts_pruned.beagle.gz",
+        beagle=expand(
+            "results/datasets/{{dataset}}/beagles/{folder}{{dataset}}.{{ref}}_{{population}}{{dp}}_{{sites}}-filts{pruning}.beagle.gz",
+            folder="pruned/" if config["params"]["ngsf-hmm"]["prune"] else "",
+            pruning=f".pruned_maxkbdist-{config['params']['ngsf-hmm']['max_kb_dist_pruning_pop']}_minr2-{config['params']['ngsf-hmm']['pruning_min-weight_pop']}"
+            if config["params"]["ngsf-hmm"]["prune"]
+            else "",
+        ),
     output:
         ibd="results/datasets/{dataset}/analyses/ngsF-HMM/{dataset}.{ref}_{population}{dp}_{sites}-filts.ibd",
         indF="results/datasets/{dataset}/analyses/ngsF-HMM/{dataset}.{ref}_{population}{dp}_{sites}-filts.indF",
@@ -61,17 +67,33 @@ rule plot_froh:
     input:
         roh=expand(
             "results/datasets/{{dataset}}/analyses/ngsF-HMM/{{dataset}}.{{ref}}_{population}{{dp}}_{{sites}}-filts.roh",
-            population=pop_list,
+            population=pop_list
+            if config["params"]["ngsf-hmm"]["estimate_in_pops"]
+            else "all",
         ),
         inds="results/datasets/{dataset}/poplists/{dataset}_all.indiv.list",
         autos=get_auto_sum,
     output:
-        plot=report(
-            "results/datasets/{dataset}/plots/inbreeding/{dataset}.{ref}_all{dp}_{sites}-filts.froh.pdf",
+        barplot=report(
+            "results/datasets/{dataset}/plots/inbreeding/{dataset}.{ref}_all{dp}_{sites}-filts.froh_bins.svg",
             category="Inbreeding",
-            labels=lambda w: {"Filter": "{sites}", **dp_report(w), "Type": "Barplot"},
+            labels=lambda w: {
+                "Filter": "{sites}",
+                **dp_report(w),
+                "Type": "Froh Bins Barplot",
+            },
         ),
-        tsv="results/datasets/{dataset}/plots/inbreeding/{dataset}.{ref}_all{dp}_{sites}-filts.froh.tsv",
+        scatter=report(
+            "results/datasets/{dataset}/plots/inbreeding/{dataset}.{ref}_all{dp}_{sites}-filts.cumroh_nroh.svg",
+            category="Inbreeding",
+            labels=lambda w: {
+                "Filter": "{sites}",
+                **dp_report(w),
+                "Type": "Nroh ~ Lroh Scatterplot",
+            },
+        ),
+        roh="results/datasets/{dataset}/plots/inbreeding/{dataset}.{ref}_all{dp}_{sites}-filts.all_roh.bed",
+        froh="results/datasets/{dataset}/plots/inbreeding/{dataset}.{ref}_all{dp}_{sites}-filts.ind_froh.tsv",
     log:
         "logs/{dataset}/ngsF-HMM/{dataset}.{ref}_all{dp}_{sites}-filts_plot.log",
     benchmark:
@@ -79,7 +101,8 @@ rule plot_froh:
     conda:
         "../envs/r.yaml"
     params:
-        popnames=pop_list,
-        outpre=lambda w, output: output["plot"].removesuffix(".froh.pdf"),
+        bins=config["params"]["ngsf-hmm"]["roh_bins"],
+        minroh=config["params"]["ngsf-hmm"]["min_roh_length"],
+        outpre=lambda w, output: output["barplot"].removesuffix(".froh_bins.svg"),
     script:
         "../scripts/plot_Froh.R"

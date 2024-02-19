@@ -51,13 +51,12 @@ rule compile_kinship_stats_sfs:
 
 rule doGlf1_ibsrelate:
     input:
+        unpack(filt_depth),
         bam="results/datasets/{dataset}/bamlists/{dataset}.{ref}_{population}{dp}.bamlist",
         bams=get_bamlist_bams,
         bais=get_bamlist_bais,
         ref="results/ref/{ref}/{ref}.fa",
         regions="results/datasets/{dataset}/filters/chunks/{ref}_chunk{chunk}.rf",
-        sites="results/datasets/{dataset}/filters/combined/{dataset}.{ref}_{sites}-filts.sites",
-        idx="results/datasets/{dataset}/filters/combined/{dataset}.{ref}_{sites}-filts.sites.idx",
     output:
         glf=temp(
             "results/datasets/{dataset}/glfs/chunks/{dataset}.{ref}_{population}{dp}_chunk{chunk}_{sites}-filts.glf.gz"
@@ -163,7 +162,11 @@ rule ngsrelate:
     Estimates inbreeding and relatedness measures using NGSrelate.
     """
     input:
-        beagle="results/datasets/{dataset}/beagles/pruned/{dataset}.{ref}_all{dp}_{sites}-filts_pruned.beagle.gz",
+        beagle=expand(
+            "results/datasets/{{dataset}}/beagles/pruned/{{dataset}}.{{ref}}_all{{dp}}_{{sites}}-filts.pruned_maxkbdist-{maxkb}_minr2-{r2}.beagle.gz",
+            maxkb=config["params"]["ngsld"]["max_kb_dist_pruning_dataset"],
+            r2=config["params"]["ngsld"]["pruning_min-weight_dataset"],
+        ),
         inds="results/datasets/{dataset}/poplists/{dataset}_all.indiv.list",
     output:
         relate="results/datasets/{dataset}/analyses/kinship/ngsrelate/{dataset}.{ref}_all{dp}_{sites}-filts_relate.tsv",

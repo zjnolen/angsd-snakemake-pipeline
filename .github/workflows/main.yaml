@@ -65,6 +65,7 @@ jobs:
         mkdir -p temp
         workdir=$(pwd -P)
         TMPDIR=$workdir/temp
+        snakemake --directory .test --configfile .test/config/config.yaml --config samples=config/samples_testSRA.tsv --use-conda --show-failed-logs --cores 2 --conda-cleanup-pkgs cache --use-singularity --default-resources mem_mb=1000 --until fastp_mergedout
         snakemake --directory .test --configfile .test/config/config.yaml --use-conda --show-failed-logs --cores 2 --conda-cleanup-pkgs cache --use-singularity --default-resources mem_mb=1000
     - name: Test report
       shell: bash -l {0}

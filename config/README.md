@@ -33,23 +33,44 @@ only characters permitted in filenames on your system.
 
 All your raw data will be pointed to in `units.tsv`.
 
-Each sample must have five columns filled in the units sheet. The columns are
-tab separated:
+Each row will contain a sample 'unit', this is a unique combination of a
+sample, sequencing run, and library. As such, these columns, as well as a
+fourth for the sequencing platform are required:
 
 - `sample` - The sample name, same as in `samples.tsv`.
-- `unit` - This is used to fill out the `ID` read group in the bam file. It
-  must be unique to each read group, so the same sample shouldn't have the
-  same unit for more than one sequencing run. A good format might be
-  `sequencer_barcode.lane`. Optical duplicates will be removed within units.
-- `lib` - This is used to fill out the `LB` read group. This should be a unique
-  identifier for each sample library. Sequencing runs from the same library,
-  but different runs, will have the same value in `lib`, but different in
-  `unit`.
+- `unit` - This describes the sequencing platform unit. The expected format is
+  `sequencerbarcode.lane`. It will be used to fill the `PU` readgroup, and
+  combined with the `lib` column to fill the `ID` read group.
+- `lib` - This is used to fill out the `LB` read group and combined with `unit`
+  to fill out the `ID` read group. This should be a unique identifier for each
+  library. Sequencing runs from the same library, but different runs, will have
+  the same value in `lib`, but different in `unit`.
 - `platform` - This is used to fill out the `PL` read group. Put what you'd
   want there. Usually `ILLUMINA` for Illumina platforms.
+
+Additionally, you have three ways to specify sequencing data sources. You can
+provide fastq files available locally on your machine, an SRA run accession to
+automatically download fastq files from NCBI, or a fully processed bam file.
+Only one of these three categories of columns need to be defined. If multiple
+are, the pipeline will prefer bam files > local fastq files > SRA accessions.
+
 - `fq1` and `fq2` - The absolute or relative paths from the working directory
   to the raw fastq files for the sample. Currently the pipeline only supports
-  paired-end sequencing, single end may be added down the line.
+  paired-end sequencing, so both columns are neede. Single end may be added
+  down the line if requested.
+- `sra` - A short read run accession. Since NCBI and ENA mirror each other, the
+  run accession can come from either. Only supports paired-end runs. These are
+  treated as temporary and deleted after trimming, unlike local fastq files,
+  which we never delete.
+- `bam` - If you do not want to map the raw reads, provide a pre-processed
+  BAM file path here. Samples with a BAM file may only appear once in the units
+  list, so multiple sequencing runs should be merged beforehand. If a BAM file
+  is listed, `fq1` and `fq2` are ignored, and the BAM file is used for that
+  sample.
+
+Note: Your dataset can include both samples that start at FASTQ and at BAM. If
+a BAM is listed, it will be used instead of mapping, but if not, the FASTQ
+files will be mapped.
 
 ## Configuration file
 
@@ -113,6 +134,13 @@ Required configuration of the reference.
   - `min_size:` A size in bp (integer). All contigs below this size will be
     excluded from analysis.
 
+- `ancestral:` A path to a fasta file containing the ancestral states in your
+  reference genome. This is optional, and is used to polarize allele
+  frequencies in SAF files to ancestral/derived. If you leave this empty,
+  the reference genome itself will be used as ancestral, and you should be
+  sure the [`params`] [`realSFS`] [`fold`] is set to `1`. If you put a reference
+  here, you can set that to `0`.
+
 Reference genomes should be uncompressed, and contig names should be clear and
 concise. Currently, there are some issues parsing contig names with
 underscores, so please change these in your reference before running the
@@ -159,21 +187,31 @@ settings for each analysis are set in the next section.
       help avoid mapping contaminants, as longer fragments are likely from more
       recent, non-endogenous DNA. However, in the event you want to map both,
       you can set this to `false`. (`true`/`false`)
+    - `historical_collapsed_aligner:` Aligner used to map collapsed historical
+      sample reads. `aln` is the recommended for this, but this is here in case
+      you would like to select `mem` for this. Uncollapsed historical reads
+      will be mapped with `mem` if `historical_only_collapsed` is set to
+      `false`, regardless of what is put here. (`aln`/`mem`)
   - `genmap:` Filter out sites with low mappability estimated by Genmap
   (`true`/`false`)
   - `repeatmasker:` (NOTE: Only one of the three options should be filled/true)
+    - `bed:` Supply a path to a bed file that contains regions with repeats.
+      This is for those who want to filter out repetitive content, but don't
+      need to run Repeatmodeler or masker in the workflow because it has
+      already been done for the genome you're using. Be sure the contig names
+      in the bed file match those in the reference supplied. GFF or other
+      filetypes that work with `bedtools subtract` may also work, but haven't
+      been tested.
     - `local_lib:` Filter repeats by masking with an already made library you
-      have locally. Should be file path.
+      have locally (such as ones downloaded for Darwin Tree of Life genomes).
+      Should be file path, not a URL.
     - `dfam_lib:` Filter repeats using a library available from dfam. Should be
       a taxonomic group name.
     - `build_lib:` Use RepeatModeler to build a library of repeats from the
       reference itself, then filter them from analysis (`true`/`false`).
   - `extreme_depth:` Filter out sites with extremely high or low global
-    sequencing depth (`[lower, upper]`). The value of `lower` (float) will be
-    multiplied by the median global depth to create a lower global depth
-    threshold, and `upper` will do the same to creat an upper threshold. This
-    is done for all samples, as well as separately for depth groupings defined
-    in samples file.
+    sequencing depth. Set the parameters for this filtering in the `params`
+    section of the yaml. (`true`/`false`)
   - `dataset_missing_data:` A floating point value between 0 and 1. Sites with
     data for fewer than this proportion of individuals across the whole dataset
     will be filtered out.
@@ -184,9 +222,9 @@ settings for each analysis are set in the next section.
     (`true`/`false`)
   - `damageprofiler:` Estimate post-mortem DNA damage on historical samples
     with Damageprofiler (`true`/`false`) NOTE: This just adds the addition of
-    Damageprofiler to the already default output of MapDamage. DNA damage will
-    always be estimated and rescaled by MapDamage for samples marked as
-    'historical'
+    Damageprofiler to the already default output of MapDamage.
+  - `mapdamage_rescale:` Rescale base quality scores using MapDamage2 to help
+    account for post-mortem damage in analyses (`true`/`false`) [docs](https://ginolhac.github.io/mapDamage/)
   - `estimate_ld:` Estimate pairwise linkage disquilibrium between sites with
     ngsLD for each popualation and the whole dataset. Note, only set this if
     you want to generate the LD estimates for use in downstream analyses
@@ -232,10 +270,23 @@ settings for each analysis are set in the next section.
       the time needed to build the workflow DAG if you have many samples. As a
       form of this method is implemented in NGSrelate, it may be more
       efficient to only enable that. (`true`/`false`)
+  - `1dsfs:` Generates a one dimensional site frequency spectrum for all
+    populations in the sample list. Automatically enabled if `thetas_angsd` is
+    enabled. (`true`/`false`)
+  - `1dsfs_boot:` Generates N bootstrap replicates of the 1D site frequency
+    spectrum for each population. N is determined from the `sfsboot` setting
+    below (`true`/`false`)
+  - `2dsfs:` Generates a two dimensional site frequency spectrum for all unique
+    populations pairings in the sample list. Automatically enabled if
+    `fst_angsd` is enabled. (`true`/`false`)
+  - `1dsfs_boot:` Generates N bootstrap replicates of the 2D site frequency
+    spectrum for each population pair. N is determined from the `sfsboot`
+    setting below (`true`/`false`)
   - `thetas_angsd:` Estimate pi, theta, and Tajima's D for each population in
     windows across the genome using ANGSD (`true`/`false`)
   - `heterozygosity_angsd:` Estimate individual genome-wide heterozygosity
-    using ANGSD (`true`/`false`)
+    using ANGSD. Calculates confidence intervals from bootstraps.
+    (`true`/`false`)
   - `fst_angsd:` Estimate pairwise $F_{ST}$ using ANGSD. Set one or both of the
     below options. Estimates both globally and in windows across the genome.
     - `populations:` Pairwise $F_{ST}$ is calculated between all possible
@@ -250,6 +301,30 @@ settings for each analysis are set in the next section.
     homozygosity over a certain length. (`true`/`false`)
   - `ibs_matrix:` Estimate pairwise identity by state distance between all
     samples using ANGSD. (`true`/`false`)
+
+#### Downsampling Section
+
+As this workflow is aimed at low coverage samples, its likely there might be
+considerable variance in sample depth. For this reason, it may be good to
+subsample all your samples to a similar depth to examine if variation in depth
+is influencing results. To do this, set an integer value here to subsample all
+your samples down to and run specific analyses.
+
+- `subsample_dp:` A mean depth to subsample your reads to. This will be done
+  per sample, and subsample from all the reads. If a sample already has the
+  same, or lower, depth than this number, it will just be used as is in the
+  analysis. (INT)
+
+- `subsample_redo_filts:` Make a separate filtered sites file using the
+  subsampled bams to calculate depth based filters. If left disabled, the
+  depth filters will be determined from the full coverage files.
+  (`true`/`false`)
+
+- `subsample_analyses:` Individually enable analyses to be performed with the
+  subsampled data. These are the same as the ones above in the analyses
+  section. Enabling here will only run the analysis for the subsampled data,
+  if you want to run it for the full data as well, you need to enable it in the
+  analyses section as well. (`true`/`false`)
 
 #### Filter Sets
 
@@ -305,6 +380,15 @@ or a pull request and I'll gladly put it in.
   filtered out. (integer)
 
 - `params:`
+  - `clipoverlap:`
+    - `clip_user_provided_bams:` Determines whether overlapping read pairs will
+      be clipped in BAM files supplied by users. This is useful as many variant
+      callers will account for overlapping reads in their processing, but ANGSD
+      will double count overlapping reads. If BAMs were prepped without this in
+      mind, it can be good to apply before running through ANGSD. However, it
+      essentially creates a BAM file of nearly equal size for every sample, so
+      it may be nice to turn off if you don't care for this correction or have
+      already applied it on the BAMs you supply. (`true`/`false`)
   - `genmap:` Parameters for mappability analysis, see [GenMap's documentation](https://github.com/cpockrandt/genmap/)
     for more details.
     - `K:`
@@ -312,6 +396,28 @@ or a pull request and I'll gladly put it in.
     - `map_thresh:` A threshold mappability score. Sites with a mappability
       score below this threshold are filtered out if GenMap is enabled.
       (integer/float, 0-1)
+  - `extreme_depth_filt:` Parameters for excluding sites based on extreme high
+    and/or low global depth. The final sites list will contain only sites that
+    pass the filters for all categories requested (i.e the whole dataset
+    and/or the depth categories set in samples.tsv).
+    - `method:` Whether you will generate extreme thresholds as a multiple of
+      the median global depth (`"median"`) or as percentiles of the
+      global depth distribution (`"percentile"`)
+    - `bounds:` The bounds of the depth cutoff, defined as a numeric list. For
+      the median method, the values will be multiplied by the median of the
+      distribution to set the thresholds (i.e. `[0.5,1.5]` would generate
+      a lower threshold at 0.5\*median and an upper at 1.5\*median). For the
+      percentile method, these define the lower and upper percentiles to filter
+      out (i.e [0.01,0.99] would remove the lower and upper 1% of the depth
+      distributions). (`[ FLOAT, FLOAT]`)
+    - `filt-on-dataset:` Whether to perform this filter on the dataset as a
+      whole (may want to set to false if your dataset global depth distribution
+      is multi-modal). (`true`/`false`)
+    - `filt-on-depth-classes:` Whether to perform this filter on the depth
+      classes defined in the samples.tsv file. This will generate a global
+      depth distribution for samples in the same category, and perform the
+      filtering on these distributions independently. Then, the sites that pass
+      for all the classes will be included. (`true`/`false`)
   - `fastp:`
     - `extra:` Additional options to pass to fastp trimming. (string)
   - `picard:`
@@ -324,34 +430,50 @@ or a pull request and I'll gladly put it in.
       than this will be binned to this value. Should be fine for most to leave
       at `1000`. (integer, [docs](http://www.popgen.dk/angsd/index.php/Depth))
     - `extra:` Additional options to pass to ANGSD during genotype likelihood
-      calculation. This is primarily useful for adding BAM input filters. Note
-      that `--remove_bads` and `-only_proper_pairs` are enabled by default, so
-      they only need to be included if you want to turn them off. I've also
-      found that for some datasets, `-C 50` and `-baq 1` can create a strong
-      relationship between sample depth and detected diversity, effectively
-      removing the benefits of ANGSD for low/variable depth data. I recommend
-      that these aren't included unless you know you need them, and even then,
-      I'd recommend plotting `heterozygosity ~ sample depth` to ensure there is
-      not any relationship. Since the workflow uses bwa to map, `-uniqueOnly 1`
-      doesn't do anything if your minimum mapping quality is > 0. Don't put
-      mapping and base quality thresholds here either, it will use the ones
-      defined above automatically. Although historical samples will have DNA
-      damaged assessed and to some extent, corrected, it may be useful to put
-      `-noTrans 1` or `-trim INT` here if you're interested in stricter filters
-      for degraded DNA. (string, [docs](http://www.popgen.dk/angsd/index.php/Input#BAM.2FCRAM))
+      calculation at all times. This is primarily useful for adding BAM input
+      filters. Note that `--remove_bads` and `-only_proper_pairs` are enabled
+      by default, so they only need to be included if you want to turn them
+      off or explicitly ensure they are enabled. I've also found that for some
+      datasets, `-C 50` and `-baq 1` can create a strong relationship between
+      sample depth and detected diversity, effectively removing the benefits of
+      ANGSD for low/variable depth data. I recommend that these aren't included
+      unless you know you need them. Since the workflow uses bwa to map,
+      `-uniqueOnly 1` doesn't do anything if your minimum mapping quality is
+      \> 0. Don't put mapping and base quality thresholds here either, it will
+      use the ones defined above automatically. Although historical samples
+      will have DNA damaged assessed and to some extent, corrected, it may be
+      useful to put `-noTrans 1` or `-trim INT` here if you're interested in
+      stricter filters for degraded DNA. (string, [docs](http://www.popgen.dk/angsd/index.php/Input#BAM.2FCRAM))
+    - `extra_saf:` Same as `extra`, but only used when making SAF files (used
+      for SFS, thetas, Fst, IBSrelate, heterozygosity includes invariable
+      sites).
+    - `extra_beagle:` Same as `extra`, but only used when making Beagle and Maf
+      files (used for PCA, Admix, ngsF-HMM, doIBS, ngsrelate, includes only
+      variable sites).
     - `snp_pval:` The p-value to use for calling SNPs (float, [docs](http://www.popgen.dk/angsd/index.php/SNP_calling))
+    - `domajorminor:` Method for inferring the major and minor alleles. Set to
+      1 to infer from the genotype likelihoods, see [documentation](https://www.popgen.dk/angsd/index.php/Major_Minor)
+      for other options. `1`, `2`, and `4` can be set without any additional
+      configuration. `5` must also have an ancestral reference provided in the
+      config, otherwise it will be the same as `4`. `3` is currently not
+      possible, but please open an issue if you have a use case, I'd like to
+      add it, but would need some input on how it is used.
+    - `domaf:` Method for inferring minor allele frequencies. Set to `1` to
+      infer from genotype likelihoods using a known major and minor from the
+      `domajorminor` setting above. See [docs](http://www.popgen.dk/angsd/index.php/Allele_Frequencies)
+      for other options. I have not tested much beyond `1` and `8`, please open
+      an issue if you have problems.
     - `min_maf:` The minimum minor allele frequency required to call a SNP.
-      (float, [docs](http://www.popgen.dk/angsd/index.php/Allele_Frequencies))
+      This is set when generating the beagle file, so will filter SNPs for
+      PCAngsd, NGSadmix, ngsF-HMM, and NGSrelate. If you would like each tool
+      to handle filtering for maf on its own you can set this to `-1`
+      (disabled). (float, [docs](http://www.popgen.dk/angsd/index.php/Allele_Frequencies))
   - `ngsld:` Settings for ngsLD ([docs](https://github.com/fgvieira/ngsLD))
     - `max_kb_dist_est-ld:` For the LD estimates generated when setting
       `estimate_ld: true` above, set the maximum distance between sites in kb
       that LD will be estimated for (`--max_kb_dist` in ngsLD, integer)
     - `max_kb_dist_decay:` The same as `max_kb_dist_est-ld:`, but used when
       estimating LD decay when setting `ld_decay: true` above (integer)
-    - `max_kb_dist_pruning:` The same as `max_kb_dist_est-ld:`, but used when
-      linkage pruning SNPs as inputs for PCA, Admix, and Inbreeding analyses.
-      Any positions above this distance will be assumed to be in linkage
-      equilibrium during the pruning process (integer)
     - `rnd_sample_est-ld:` For the LD estimates generated when setting
       `estimate_ld: true` above, randomly sample this proportion of pairwise
       linkage estimates rather than estimating all (`--rnd_sample` in ngsLD,
@@ -364,14 +486,48 @@ or a pull request and I'll gladly put it in.
       size corrected r^2 model be used? (`true`/`false`, `true` is the
       equivalent of passing a sample size to `fit_LDdecay.R` in ngsLD using
       `--n_ind`)
-    - `pruning_min-weight:` The minimum r^2 to assume two positions are in
-      linkage disequilibrium when pruning (float)
+    - `max_kb_dist_pruning_dataset:` The same as `max_kb_dist_est-ld:`, but
+      used when linkage pruning SNPs as inputs for PCAngsd, NGSadmix, and
+      NGSrelate analyses. Pruning is performed on the whole dataset. Any
+      positions above this distance will be assumed to be in linkage
+      equilibrium during the pruning process. (integer)
+    - `pruning_min-weight_dataset:` The minimum r^2 to assume two positions are
+      in linkage disequilibrium when pruning for PCAngsd, NGSadmix, and
+      NGSrelate analyses. (float)
+  - `ngsf-hmm:` Settings for ngsF-HMM
+    - `estimate_in_pops:` Set to `true` to run ngsF-HMM separately for each
+      population in your dataset. Set to `false` to run for whole dataset at
+      once. ngsF-HMM assumes Hardy-Weinberg Equilibrium (aside from inbreeding)
+      in the input data, so select the option that most reflects this. You can
+      use PCA and Admixture analyses to help determine this. (`true`/`false`)
+    - `prune:` Whether or not to prune SNPs for LD before running the analysis.
+      ngsF-HMM assumes independent sites, so it is preferred to set this to
+      `true` to satisfy that expectation. (`true`/`false`)
+    - `max_kb_dist_pruning_pop:` The maximum distance between sites in kb
+      that will be treated as in LD when pruning for the ngsF-HMM input. (INT)
+    - `pruning_min-weight_pop:` The minimum r^2 to assume two positions are in
+      linkage disequilibrium when pruning for the ngsF-HMM input. Note, that
+      this likely will be substantially higher for individual populations than
+      for the whole dataset, as background LD should be higher when no
+      substructure is present. (float)
+    - `min_roh_length:` Minimum ROH size in base pairs to include in inbreeding
+      coefficient calculation. Set if short ROH might be considered low
+      confidence for your data. (integer)
+    - `roh_bins:` A list of integers that describe the size classes in base
+      pairs you would like to partition the inbreeding coefficient by. This can
+      help visualize how much of the coefficient comes from ROH of certain size
+      classes (and thus, ages). List should be in ascending order and the first
+      entry should be greater than `min_roh_length`. The first bin will group
+      ROH between `min_roh_length` and the first entry, subsequent bins will
+      group ROH with sizes between adjacent entries in the list, and the final
+      bin will group all ROH larger than the final entry in the list. (list)
   - `realSFS:` Settings for realSFS
-    - `fold:` Whether or not to fold the produced SFS (0 or 1, [docs](http://www.popgen.dk/angsd/index.php/SFS_Estimation))
-      **NOTE:** I have not implemented the use of an ancestral reference into
-      this workflow, so this should always be set to 1 until I implement this.
-    - `sfsboot:` Doesn't work now, but when it does it will produce this many
-      bootstrapped SFS per population and population pair (integer)
+    - `fold:` Whether or not to fold the produced SFS. Set to 1 if you have not
+      provided an ancestral-state reference (0 or 1, [docs](http://www.popgen.dk/angsd/index.php/SFS_Estimation))
+    - `sfsboot:` Determines number of bootstrap replicates to use when
+      requesting bootstrapped SFS. Is used for both 1dsfs and 2dsfs (this is
+      very easy to separate, open an issue if desired). Automatically used
+      for heterozygosity analysis to calculate confidence intervals. (integer)
   - `fst:` Settings for $F_{ST}$ calculation in ANGSD
     - `whichFst:` Determines which $F_{ST}$ estimator is used by ANGSD. With 0
       being the default Reynolds 1983 and 1 being the Bhatia 2013 estimator.
@@ -399,6 +555,6 @@ or a pull request and I'll gladly put it in.
       assessment. (integer)
     - `extra:` Additional arguments to pass to NGSadmix (for instance,
       increasing `-maxiter`). (string, [docs](http://www.popgen.dk/software/index.php/NgsAdmix))
-    - `ibs:` Settings for identity by state calculation with ANGSD
-      - `-doIBS:` Whether to use a random (1) or consensus (2) base in IBS
+  - `ibs:` Settings for identity by state calculation with ANGSD
+    - `-doIBS:` Whether to use a random (1) or consensus (2) base in IBS
         distance calculation ([docs](http://www.popgen.dk/angsd/index.php/PCA_MDS))

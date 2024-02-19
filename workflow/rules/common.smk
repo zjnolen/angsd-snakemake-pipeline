@@ -27,7 +27,7 @@ evaladmix_container = "docker://zjnolen/evaladmix:0.961"
 ngsf_hmm_container = "docker://zjnolen/ngsf-hmm:1.1.0"
 mapdamage_container = "docker://quay.io/biocontainers/mapdamage2:2.2.1--pyr40_0"
 ngsrelate_container = "docker://zjnolen/ngsrelate:20220925-ec95c8f"
-ngsld_container = "docker://zjnolen/ngsld:1.2.0"
+ngsld_container = "docker://zjnolen/ngsld:1.2.0-prune_graph"
 
 
 # Define function for genome chunks to break up analysis (for parallelization)
@@ -105,9 +105,21 @@ samples = pd.read_table(config["samples"], dtype=str, comment="#").set_index(
 samples = samples.drop(config["exclude_ind"])
 
 
-# Load unit sheet
+# Load unit sheet and drop any unused units
 
 units = pd.read_table(config["units"])
+units = units[units["sample"].isin(list(samples.index))]
+
+
+# Get lists of samples where bams are provided by users and where they are made
+# by the pipeline
+
+if "bam" in units:
+    userbams = list(units["sample"][units["bam"].notnull()].unique())
+    pipebams = list(units["sample"][units["bam"].isnull()].unique())
+else:
+    userbams = []
+    pipebams = list(samples.index)
 
 
 # Get a list of all the populations
@@ -135,22 +147,28 @@ if any(config["filter_beds"].values()):
 
 ## Get fastq inputs for fastp
 def get_raw_fastq(wildcards):
-    unit = units.loc[
-        (units["sample"] == wildcards.sample)
-        & (units["unit"] == wildcards.unit)
-        & (units["lib"] == wildcards.lib),
-        ["sample", "fq1", "fq2"],
-    ].set_index("sample")
-    return {"sample": [unit.fq1[0], unit.fq2[0]]}
-
-
-## Get minimum overlap to collapse read pairs per sample
-def get_min_overlap(wildcards):
-    s = wildcards.sample
-    if s in samples.index[samples.time == "historical"]:
-        return config["params"]["fastp"]["min_overlap_hist"]
-    elif s in samples.index[samples.time == "modern"]:
-        return config["params"]["fastp"]["min_overlap_mod"]
+    if "fq1" in units:
+        unit = units.loc[
+            (units["sample"] == wildcards.sample)
+            & (units["unit"] == wildcards.unit)
+            & (units["lib"] == wildcards.lib),
+            ["sample", "fq1", "fq2"],
+        ].set_index("sample")
+        if not pd.isna(unit.fq1.item()):
+            return {"sample": [unit.fq1.item(), unit.fq2.item()]}
+    if "sra" in units:
+        sra = units[
+            (units["sample"] == wildcards.sample)
+            & (units["unit"] == wildcards.unit)
+            & (units["lib"] == wildcards.lib)
+        ].sra.item()
+        if not pd.isna(sra):
+            return {
+                "sample": [
+                    f"results/downloaded_fastq/{sra}_1.fastq.gz",
+                    f"results/downloaded_fastq/{sra}_2.fastq.gz",
+                ]
+            }
 
 
 # Reference
@@ -164,6 +182,13 @@ def get_repmaskin(wildcards):
     elif config["analyses"]["repeatmasker"]["build_lib"]:
         dic.update({"lib": rules.repeatmodeler.output.fa})
     return dic
+
+
+## Determine if making repeat bed or using user supplied
+def get_rep_file(wildcards):
+    if config["analyses"]["repeatmasker"]["bed"]:
+        return {"rep": config["analyses"]["repeatmasker"]["bed"]}
+    return {"rep": "results/ref/{ref}/repeatmasker/{ref}.fa.out.gff"}
 
 
 ## Get inputs for combined filters file
@@ -197,21 +222,60 @@ def get_bed_filts(wildcards):
             "results/datasets/{dataset}/filters/sex-link_mito_excl/{ref}_excl.bed.sum"
         )
     # add mappability filter if set
-    if config["analyses"]["genmap"]:
-        bedin.append("results/datasets/{dataset}/filters/lowmap/{ref}_lowmap.bed")
-        bedsum.append("results/datasets/{dataset}/filters/lowmap/{ref}_lowmap.bed.sum")
+    if config["analyses"]["pileup-mappability"]:
+        bedin.extend(
+            expand(
+                "results/datasets/{{dataset}}/filters/pileupmap/{{ref}}_k{k}_e{e}_{thresh}.bed",
+                k=config["params"]["genmap"]["K"],
+                e=config["params"]["genmap"]["E"],
+                thresh=config["params"]["genmap"]["map_thresh"],
+            )
+        )
+        bedsum.extend(
+            expand(
+                "results/datasets/{{dataset}}/filters/pileupmap/{{ref}}_k{k}_e{e}_{thresh}.bed.sum",
+                k=config["params"]["genmap"]["K"],
+                e=config["params"]["genmap"]["E"],
+                thresh=config["params"]["genmap"]["map_thresh"],
+            )
+        )
     # add repeat filter if set
     if any(config["analyses"]["repeatmasker"].values()):
-        bedin.append("results/ref/{ref}/repeatmasker/{ref}.fa.out.gff")
-        bedsum.append("results/ref/{ref}/repeatmasker/{ref}.fa.out.gff.sum")
+        bedin.append("results/ref/{ref}/repeatmasker/{ref}.fa.out.bed")
+        bedsum.append("results/ref/{ref}/repeatmasker/{ref}.fa.out.sum")
     # add global depth extremes filter if set
     if config["analyses"]["extreme_depth"]:
-        bedin.append(
-            "results/datasets/{dataset}/filters/depth/{dataset}.{ref}{dp}_extreme-depth.bed"
-        )
-        bedsum.append(
-            "results/datasets/{dataset}/filters/depth/{dataset}.{ref}{dp}_extreme-depth.bed.sum"
-        )
+        if (
+            not config["params"]["extreme_depth_filt"]["filt-on-dataset"]
+            and not config["params"]["extreme_depth_filt"]["filt-on-depth-classes"]
+        ):
+            raise ValueError(
+                f"Config invalid - extreme_depth filter is set to true, but neither "
+                f"filt-on-dataset or filt-on-depth-classes is set to true in the "
+                f"params, so no groups are defined for the filter to act on. Please "
+                f"set the filter to false if you do not want to filter on depth. If "
+                f"you do, please set the categories the filter will happen on."
+            )
+        if config["params"]["extreme_depth_filt"]["filt-on-dataset"]:
+            bedin.append(
+                "results/datasets/{dataset}/filters/depth/{dataset}.{ref}_all{dp}_extreme-depth.bed"
+            )
+            bedsum.append(
+                "results/datasets/{dataset}/filters/depth/{dataset}.{ref}_all{dp}_extreme-depth.bed.sum"
+            )
+        if config["params"]["extreme_depth_filt"]["filt-on-depth-classes"]:
+            bedin.extend(
+                expand(
+                    "results/datasets/{{dataset}}/filters/depth/{{dataset}}.{{ref}}_{population}{{dp}}_extreme-depth.bed",
+                    population=list(set(samples.depth.values)),
+                )
+            )
+            bedsum.extend(
+                expand(
+                    "results/datasets/{{dataset}}/filters/depth/{{dataset}}.{{ref}}_{population}{{dp}}_extreme-depth.bed.sum",
+                    population=list(set(samples.depth.values)),
+                )
+            )
     # add dataset level missing data filter if set
     if config["analyses"]["dataset_missing_data"]:
         bedin.extend(
@@ -260,8 +324,9 @@ def get_newfilt(wildcards):
 
 ## Get read groups for mapping
 def get_read_group(wildcards):
-    return r"-R '@RG\tID:{unit}\tSM:{sample}\tLB:{lib}\tPL:{platform}'".format(
-        unit=wildcards.unit,
+    return r"'@RG\tID:{id}\tPU:{pu}\tSM:{sample}\tLB:{lib}\tPL:{platform}'".format(
+        id=f"{wildcards.unit}.{wildcards.lib}",
+        pu=f"{wildcards.unit}",
         sample=wildcards.sample,
         lib=wildcards.lib,
         platform=units.loc[
@@ -269,7 +334,7 @@ def get_read_group(wildcards):
             & (units["unit"] == wildcards.unit)
             & (units["lib"] == wildcards.lib),
             "platform",
-        ].to_list(),
+        ].to_list()[0],
     )
 
 
@@ -277,59 +342,88 @@ def get_read_group(wildcards):
 def get_sample_bams(wildcards):
     reads = units.loc[units["sample"] == wildcards.sample]
     combos = reads[["sample", "unit", "lib"]].agg("_".join, axis=1)
+    if wildcards.sample in samples.index[samples.time == "historical"]:
+        if wildcards.pairing == "paired":
+            return expand(
+                "results/mapping/mapped/{combo}.{{ref}}.mem.uncollapsed.bam",
+                combo=combos,
+            )
+        aligner = config["analyses"]["mapping"]["historical_collapsed_aligner"]
+    else:
+        aligner = "mem"
     return expand(
-        "results/mapping/mapped/{combo}.{{ref}}.{{pairing}}.bam", combo=combos
+        "results/mapping/mapped/{combo}.{{ref}}.{aligner}.{{pairing}}.bam",
+        combo=combos,
+        aligner=aligner,
     )
 
 
 ## Select which duplicate removal process the bam goes through
 def get_dedup_bams(wildcards):
-    if config["analyses"]["mapping"]["historical_only_collapsed"]:
-        s = wildcards.sample
-        if s in samples.index[samples.time == "historical"]:
-            return ["results/mapping/dedup/{sample}.{ref}.merged.rmdup.bam"]
-        elif s in samples.index[samples.time == "modern"]:
-            return [
-                "results/mapping/dedup/{sample}.{ref}.paired.rmdup.bam",
-                "results/mapping/dedup/{sample}.{ref}.merged.rmdup.bam",
-            ]
-    else:
+    s = wildcards.sample
+    if s in samples.index[samples.time == "historical"]:
+        if config["analyses"]["mapping"]["historical_only_collapsed"]:
+            return "results/mapping/dedup/{sample}.{ref}.merged.rmdup.bam"
         return [
             "results/mapping/dedup/{sample}.{ref}.paired.rmdup.bam",
             "results/mapping/dedup/{sample}.{ref}.merged.rmdup.bam",
         ]
+    return "results/mapping/dedup/{sample}.{ref}.paired.rmdup.bam"
 
 
-## Determine if bam needs DNA damage rescaling
+## Determine what bam to use in analyses. This decides whether to use user provided
+## bams, and process raw reads if not. It also determines if mapdamage rescaling will
+## be performed on historical bams.
 def get_final_bam(wildcards):
     s = wildcards.sample
-    if s in samples.index[samples.time == "historical"]:
+    if ("bam" in units) and any(units.loc[units["sample"] == s, "bam"].notnull()):
+        if sum(units["sample"] == s) > 1:
+            raise ValueError(
+                f"Config invalid - sample {s} appears in units file multiple times, "
+                f"but at least one of these times has a user provided bam. Multiple "
+                f"units are only supported when the pipeline is doing bam processing "
+                f"for a sample. Please process the sample into one bam file, or "
+                f"process all the raw reads using the pipeline without supplying a bam "
+                f"for the sample."
+            )
+        if config["params"]["clipoverlap"]["clip_user_provided_bams"]:
+            return {
+                "bam": "results/mapping/user-provided-bams/{sample}.{ref}.clip.bam",
+                "bai": "results/mapping/user-provided-bams/{sample}.{ref}.clip.bam.bai",
+            }
         return {
-            "bam": "results/mapping/bams/{sample}.{ref}.rmdup.realn.clip.rescaled.bam",
-            "bai": "results/mapping/bams/{sample}.{ref}.rmdup.realn.clip.rescaled.bam.bai",
+            "bam": "results/mapping/user-provided-bams/{sample}.{ref}.user-processed.bam",
+            "bai": "results/mapping/user-provided-bams/{sample}.{ref}.user-processed.bam.bai",
         }
-    elif s in samples.index[samples.time == "modern"]:
+    if (s in samples.index[samples.time == "historical"]) and (
+        config["analyses"]["mapdamage_rescale"]
+    ):
         return {
-            "bam": "results/mapping/bams/{sample}.{ref}.rmdup.realn.clip.bam",
-            "bai": "results/mapping/bams/{sample}.{ref}.rmdup.realn.clip.bam.bai",
+            "bam": "results/mapping/bams/{sample}.{ref}.rmdup.realn.rescaled.clip.bam",
+            "bai": "results/mapping/bams/{sample}.{ref}.rmdup.realn.rescaled.clip.bam.bai",
         }
+    return {
+        "bam": "results/mapping/bams/{sample}.{ref}.rmdup.realn.clip.bam",
+        "bai": "results/mapping/bams/{sample}.{ref}.rmdup.realn.clip.bam.bai",
+    }
 
 
 ## Get flagstat file for endogenous content calculation
 def get_endo_cont_stat(wildcards):
     s = wildcards.sample
-    if (config["analyses"]["mapping"]["historical_only_collapsed"]) and (
-        s in samples.index[samples.time == "historical"]
-    ):
+    if userbams and s in userbams:
         return {
-            "paired": "results/mapping/mapped/{sample}.{ref}.merged.flagstat",
-            "merged": "results/mapping/mapped/{sample}.{ref}.merged.flagstat",
+            "paired": "results/mapping/user-provided-bams/{sample}.{ref}.user-processed.flagstat",
+            "merged": "results/mapping/user-provided-bams/{sample}.{ref}.user-processed.flagstat",
         }
-    else:
+    if s in samples.index[samples.time == "historical"]:
+        if config["analyses"]["mapping"]["historical_only_collapsed"]:
+            return {"merged": "results/mapping/mapped/{sample}.{ref}.merged.flagstat"}
         return {
             "paired": "results/mapping/mapped/{sample}.{ref}.paired.flagstat",
             "merged": "results/mapping/mapped/{sample}.{ref}.merged.flagstat",
         }
+    return {"paired": "results/mapping/mapped/{sample}.{ref}.paired.flagstat"}
 
 
 # ANGSD
@@ -349,6 +443,45 @@ def get_endo_cont_stat(wildcards):
 #         return "results/datasets/{dataset}/glfs/chunks/{dataset}.{ref}_{population}{dp}_chunk{chunk}_{sites}-filts.glf.gz"
 #     else:
 #         return "results/datasets/{dataset}/glfs/chunks/{dataset}.{ref}_{population}{dp}_chunk{chunk}_allsites-filts.glf.gz"
+
+
+# Select filter file based off of full depth samples or subsampled depth
+def filt_depth(wildcards):
+    if config["subsample_redo_filts"]:
+        return {
+            "sites": "results/datasets/{dataset}/filters/combined/{dataset}.{ref}{dp}_{sites}-filts.sites",
+            "idx": "results/datasets/{dataset}/filters/combined/{dataset}.{ref}{dp}_{sites}-filts.sites.idx",
+        }
+    return {
+        "sites": "results/datasets/{dataset}/filters/combined/{dataset}.{ref}_{sites}-filts.sites",
+        "idx": "results/datasets/{dataset}/filters/combined/{dataset}.{ref}_{sites}-filts.sites.idx",
+    }
+
+
+# Choose to use an ancestral reference if present, otherwise use main reference
+def get_anc_ref(wildcards):
+    if config["ancestral"]:
+        return {
+            "anc": "results/ref/{ref}/{ref}.anc.fa",
+            "ancfai": "results/ref/{ref}/{ref}.anc.fa.fai",
+        }
+    return {
+        "anc": "results/ref/{ref}/{ref}.fa",
+        "ancfai": "results/ref/{ref}/{ref}.fa.fai",
+    }
+
+
+# Determine if docounts is needed for beagle/maf calculation to keep it from
+# slowing things down when it is not. It is only needed if the major and minor
+# alleles are being inferred from counts (-doMajorMinor 2) or the minor allele
+# frequency is being inferred by counts (-doMaf 8, >8 possible if count
+# inference is combined with other inferences)
+def get_docounts(wildcard):
+    if (int(config["params"]["angsd"]["domajorminor"]) == 2) or (
+        int(config["params"]["angsd"]["domaf"]) >= 8
+    ):
+        return "-doCounts 1"
+    return ""
 
 
 ## Get random sampling proportion depending on if LD decay is being calculated

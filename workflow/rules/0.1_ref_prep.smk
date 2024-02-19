@@ -24,6 +24,24 @@ rule link_ref:
         """
 
 
+if config["ancestral"]:
+
+    rule link_anc_ref:
+        """Link ancestral reference genome to results directory if it exists"""
+        input:
+            config["ancestral"],
+        output:
+            "results/ref/{ref}/{ref}.anc.fa",
+        log:
+            "logs/ref/link_ref/{ref}.anc.log",
+        conda:
+            "../envs/shell.yaml"
+        shell:
+            """
+            ln -sr {input} {output} 2> {log}
+            """
+
+
 rule bwa_index:
     """Index reference genome for bwa (mapping)"""
     input:
@@ -50,13 +68,13 @@ rule bwa_index:
 rule samtools_faidx:
     """Index reference genome using samtools (fai index used by several tools)"""
     input:
-        "results/ref/{ref}/{ref}.fa",
+        "results/ref/{ref}/{prefix}.fa",
     output:
-        "results/ref/{ref}/{ref}.fa.fai",
+        "results/ref/{ref}/{prefix}.fa.fai",
     log:
-        "logs/ref/samtools_faidx/{ref}.log",
+        "logs/ref/samtools_faidx/{ref}/{prefix}.log",
     benchmark:
-        "benchmarks/ref/samtools_faidx/{ref}.log"
+        "benchmarks/ref/samtools_faidx/{ref}/{prefix}.log"
     wrapper:
         "v2.4.0/bio/samtools/faidx"
 

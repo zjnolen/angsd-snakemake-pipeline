@@ -2,6 +2,19 @@
 # samples only) with fastp
 
 
+rule ncbi_download:
+    output:
+        temp("results/downloaded_fastq/{accession}_1.fastq.gz"),
+        temp("results/downloaded_fastq/{accession}_2.fastq.gz"),
+    log:
+        "logs/download_fastq/{accession}.log",
+    params:
+        extra="--skip-technical -x",
+    threads: 6
+    wrapper:
+        "v3.3.6/bio/sra-tools/fasterq-dump"
+
+
 rule fastp_mergedout:
     """Process reads with fastp, collapsing overlapping read pairs"""
     input:
@@ -9,11 +22,48 @@ rule fastp_mergedout:
     output:
         trimmed=temp(
             expand(
-                "results/preprocessing/fastp/{{sample}}_{{unit}}_{{lib}}.{read}.fastq.gz",
+                "results/preprocessing/fastp/{{sample}}_{{unit}}_{{lib}}.{read}.uncollapsed.fastq.gz",
                 read=["R1", "R2"],
             )
         ),
         merged=temp("results/preprocessing/fastp/{sample}_{unit}_{lib}.merged.fastq.gz"),
+        html=report(
+            "results/preprocessing/qc/fastp/{sample}_{unit}_{lib}_merged.html",
+            category="Quality Control",
+            subcategory="Trimming Reports",
+            labels={
+                "Sample": "{sample}",
+                "Unit": "{unit}",
+                "Lib": "{lib}",
+                "Type": "fastp Report",
+            },
+        ),
+        json="results/preprocessing/qc/fastp/{sample}_{unit}_{lib}_merged.json",
+    log:
+        "logs/preprocessing/fastp/{sample}_{unit}_{lib}.merged.log",
+    benchmark:
+        "benchmarks/preprocessing/fastp/{sample}_{unit}_{lib}.merged.log"
+    params:
+        extra=lambda w: config["params"]["fastp"]["extra"]
+        + f" --merge --overlap_len_require {config['params']['fastp']['min_overlap_hist']}",
+    threads: lambda wildcards, attempt: attempt * 2
+    resources:
+        runtime=lambda wildcards, attempt: attempt * 480,
+    wrapper:
+        "v2.5.0/bio/fastp"
+
+
+rule fastp_pairedout:
+    """Process reads with fastp, don't collapse overlapping read pairs"""
+    input:
+        unpack(get_raw_fastq),
+    output:
+        trimmed=temp(
+            expand(
+                "results/preprocessing/fastp/{{sample}}_{{unit}}_{{lib}}.{read}.paired.fastq.gz",
+                read=["R1", "R2"],
+            )
+        ),
         html=report(
             "results/preprocessing/qc/fastp/{sample}_{unit}_{lib}_paired.html",
             category="Quality Control",
@@ -27,15 +77,14 @@ rule fastp_mergedout:
         ),
         json="results/preprocessing/qc/fastp/{sample}_{unit}_{lib}_paired.json",
     log:
-        "logs/preprocessing/fastp/{sample}_{unit}_{lib}.log",
+        "logs/preprocessing/fastp/{sample}_{unit}_{lib}.paired.log",
     benchmark:
-        "benchmarks/preprocessing/fastp/{sample}_{unit}_{lib}.log"
+        "benchmarks/preprocessing/fastp/{sample}_{unit}_{lib}.paired.log"
     params:
-        extra=lambda w: config["params"]["fastp"]["extra"]
-        + f" --merge --overlap_len_require {get_min_overlap(w)}",
+        extra=lambda w: config["params"]["fastp"]["extra"],
     threads: lambda wildcards, attempt: attempt * 2
     resources:
-        runtime=lambda wildcards, attempt: attempt * 240,
+        runtime=lambda wildcards, attempt: attempt * 480,
     wrapper:
         "v2.5.0/bio/fastp"
 

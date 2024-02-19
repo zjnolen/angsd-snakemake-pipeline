@@ -7,7 +7,7 @@ rule damageprofiler:
     rather than corrective.
     """
     input:
-        bam="results/mapping/bams/{sample}.{ref}.rmdup.realn.clip.bam",
+        bam="results/mapping/bams/{sample}.{ref}.rmdup.realn.bam",
         ref="results/ref/{ref}/{ref}.fa",
     output:
         multiext(
@@ -56,7 +56,7 @@ rule mapDamage2_rescaling:
     quality scores to correct for damage.
     """
     input:
-        bam="results/mapping/bams/{sample}.{ref}.rmdup.realn.clip.bam",
+        bam="results/mapping/bams/{sample}.{ref}.rmdup.realn.bam",
         ref="results/ref/{ref}/{ref}.fa",
     output:
         log="results/mapping/qc/mapdamage/{sample}.{ref}/Runtime_log.txt",
@@ -67,7 +67,9 @@ rule mapDamage2_rescaling:
         len="results/mapping/qc/mapdamage/{sample}.{ref}/Length_plot.pdf",
         lg_dist="results/mapping/qc/mapdamage/{sample}.{ref}/lgdistribution.txt",
         misincorp="results/mapping/qc/mapdamage/{sample}.{ref}/misincorporation.txt",
-        rescaled_bam="results/mapping/bams/{sample}.{ref}.rmdup.realn.clip.rescaled.bam",
+        rescaled_bam=temp(
+            "results/mapping/bams/{sample}.{ref}.rmdup.realn.rescaled.bam"
+        ),
     log:
         "logs/mapping/mapdamage/{sample}.{ref}.log",
     benchmark:
