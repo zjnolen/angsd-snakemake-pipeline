@@ -118,7 +118,7 @@ if config["analyses"]["doAncError"]:
         )
     else:
         all_outputs.append(
-            "results/datasets/{dataset}/qc/doAncError/{dataset}.{ref}_all.errorEstOverall.tsv"
+            "results/datasets/{dataset}/qc/doAncError/{dataset}.{ref}_all_{sites}-filts.errorEstOverall.tsv"
         )
 
 if config["analyses"]["estimate_ld"]:
