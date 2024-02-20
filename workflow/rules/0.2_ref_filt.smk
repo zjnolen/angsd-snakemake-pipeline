@@ -724,6 +724,19 @@ rule user_sites:
         """
 
 
+rule nofilts_sites_file:
+    input:
+        gen="results/ref/{ref}/beds/genome.bed",
+    output:
+        sites="results/datasets/{dataset}/filters/combined/{dataset}.{ref}{dp}_no-filts.sites"
+    conda:
+        "../envs/shell.yaml"
+    shell:
+        """
+        awk '{{print $1"\t"$2+1"\t"$3}}' {input.gen} > {output.sites}
+        """
+
+
 rule filter_summary_table:
     """Produce table from filter summary to incorporate into report"""
     input:

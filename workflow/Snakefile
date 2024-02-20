@@ -110,16 +110,21 @@ if config["analyses"]["damageprofiler"]:
 # Non-subsampled analyses
 
 if config["analyses"]["doAncError"]:
-    if not config["params"]["angsd"]["error_free_ind"]:
+    if not config["params"]["angsd"]["ancerror_error_free_ind"]:
         raise ValueError(
             f"Analysis 'doAncError' has been set to 'true', however, no error free "
             f"individual has been set. Please assign an individual in the config file "
-            f"under params > angsd > error_free_ind."
+            f"under params > angsd > ancerror_error_free_ind."
         )
     else:
-        all_outputs.append(
-            "results/datasets/{dataset}/qc/doAncError/{dataset}.{ref}_all_{sites}-filts.errorEstOverall.tsv"
-        )
+        if config["params"]["angsd"]["ancerror_filter"]:
+            all_outputs.append(
+                "results/datasets/{dataset}/qc/doAncError/{dataset}.{ref}_all_no-filts.errorEstOverall.tsv"
+            )
+        else:
+            all_outputs.append(
+                "results/datasets/{dataset}/qc/doAncError/{dataset}.{ref}_all_allsites-filts.errorEstOverall.tsv"
+            )
 
 if config["analyses"]["estimate_ld"]:
     all_outputs.extend(

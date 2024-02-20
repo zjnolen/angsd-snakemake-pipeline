@@ -140,7 +140,10 @@ params:
     snp_pval: "1e-6"
     min_maf: -1 # Set -1 to disable
     mindepthind_heterozygosity: 3
-    error_free_ind: ""
+    doancerror: 2
+    ancerror_outgroup_fasta:
+    ancerror_error_free_ind: ""
+    ancerror_filter: false
   ngsld:
     max_kb_dist_est-ld: 4000
     rnd_sample_est-ld: 0.001

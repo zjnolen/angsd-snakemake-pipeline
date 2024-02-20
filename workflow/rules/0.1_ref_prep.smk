@@ -42,6 +42,29 @@ if config["ancestral"]:
             """
 
 
+if config["analyses"]["doAncError"]:
+
+    def ancerr_ref(wildcards):
+        if config["params"]["angsd"]["ancerror_outgroup_fasta"]:
+            return config["params"]["angsd"]["ancerror_outgroup_fasta"]
+        else:
+            return config["reference"]["fasta"]
+
+    rule link_ancerr_ref:
+        input:
+            ancerr_ref,
+        output:
+            "results/ref/{ref}/{ref}.ancerr.fa",
+        log:
+            "logs/ref/link_ref/{ref}.ancerr.log",
+        conda:
+            "../envs/shell.yaml"
+        shell:
+            """
+            ln -sr {input} {output} 2> {log}
+            """
+
+
 rule bwa_index:
     """Index reference genome for bwa (mapping)"""
     input:

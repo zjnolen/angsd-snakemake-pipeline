@@ -314,7 +314,7 @@ rule doFasta:
         #idx="results/datasets/{dataset}/filters/combined/{dataset}.{ref}_{sites}-filts.sites.idx",
     output:
         fa="results/datasets/{dataset}/fastas/{sample}.{ref}.consensus.fa.gz",
-        arg="results/datasets/{dataset}/fastas/{sample}.{ref}.consensus.arg"
+        arg="results/datasets/{dataset}/fastas/{sample}.{ref}.consensus.arg",
     log:
         "logs/{dataset}/angsd/doFasta/{sample}.{ref}.consensus.log",
     benchmark:
@@ -357,15 +357,15 @@ rule doAncError:
     is only suitable if that is truly the case.
     """
     input:
-        ref="results/ref/{ref}/{ref}.fa",
-        fai="results/ref/{ref}/{ref}.fa.fai",
+        ref="results/ref/{ref}/{ref}.ancerr.fa",
+        fai="results/ref/{ref}/{ref}.ancerr.fa.fai",
         errfree=expand(
             "results/datasets/{{dataset}}/fastas/{sample}.{{ref}}.consensus.fa.gz",
-            sample=config["params"]["angsd"]["error_free_ind"],
+            sample=config["params"]["angsd"]["ancerror_error_free_ind"],
         ),
         errfreefai=expand(
             "results/datasets/{{dataset}}/fastas/{sample}.{{ref}}.consensus.fa.gz.fai",
-            sample=config["params"]["angsd"]["error_free_ind"],
+            sample=config["params"]["angsd"]["ancerror_error_free_ind"],
         ),
         bam="results/datasets/{dataset}/bams/{sample}.{ref}.bam",
         bai="results/datasets/{dataset}/bams/{sample}.{ref}.bam.bai",
@@ -373,6 +373,8 @@ rule doAncError:
         idx="results/datasets/{dataset}/filters/combined/{dataset}.{ref}_{sites}-filts.sites.idx",
     output:
         err="results/datasets/{dataset}/qc/doAncError/{sample}/{sample}.{ref}_{sites}-filts.ancError",
+    wildcard_constraints:
+        sites="|".join(filters + ["no"]),
     log:
         "logs/{dataset}/angsd/doAncError/{sample}.{ref}_{sites}-filts.log",
     benchmark:
@@ -385,12 +387,14 @@ rule doAncError:
         extra=config["params"]["angsd"]["extra"],
         mapQ=config["mapQ"],
         baseQ=config["baseQ"],
+        ancerr=config["params"]["angsd"]["doancerror"],
         out=lambda w, output: os.path.splitext(output.err)[0],
     shell:
         """
-        angsd -doAncError 2 -i {input.bam} -anc {input.ref} -ref {input.errfree} \
-            -nThreads {threads} {params.extra} -minMapQ {params.mapQ} \
-            -minQ {params.baseQ} -sites {input.sites} -out {params.out} 2> {log}
+        angsd -doAncError {params.ancerr} -i {input.bam} -anc {input.ref} \
+            -ref {input.errfree} -nThreads {threads} {params.extra} \
+            -minMapQ {params.mapQ} -minQ {params.baseQ} -sites {input.sites} \
+            -out {params.out} 2> {log}
         """
 
 
@@ -403,6 +407,8 @@ rule estError:
     output:
         table="results/datasets/{dataset}/qc/doAncError/{sample}/{sample}.{ref}_{sites}-filts.errorEst.txt",
         pdf="results/datasets/{dataset}/qc/doAncError/{sample}/{sample}.{ref}_{sites}-filts.errorEst.pdf",
+    wildcard_constraints:
+        sites="|".join(filters + ["no"]),
     log:
         "logs/{dataset}/angsd/estError/{sample}.{ref}_{sites}-filts.log",
     benchmark:
@@ -437,6 +443,8 @@ rule cat_error:
     output:
         est="results/datasets/{dataset}/qc/doAncError/{dataset}.{ref}_all_{sites}-filts.errorEst.tsv",
         overallest="results/datasets/{dataset}/qc/doAncError/{dataset}.{ref}_all_{sites}-filts.errorEstOverall.tsv",
+    wildcard_constraints:
+        sites="|".join(filters + ["no"]),
     log:
         "logs/{dataset}/angsd/estError/{dataset}.{ref}_all_{sites}-filts_combine.log",
     benchmark:
@@ -445,7 +453,7 @@ rule cat_error:
         "../envs/shell.yaml"
     shell:
         """
-        (echo 'C->A    G->A    T->A    A->C    G->C    T->C    A->G    C->G    T->G    A->T    C->T    G->T' > {output.est}
+        (echo 'sample    C->A    G->A    T->A    A->C    G->C    T->C    A->G    C->G    T->G    A->T    C->T    G->T' > {output.est}
         echo 'sample    error%' > {output.overallest}
         for i in {input}; do
             head -n2 $i | tail -n1 | tr -d '\"' >> {output.est}
