@@ -96,18 +96,32 @@ rule bwa_mem_merged:
         "v2.6.0/bio/bwa/mem"
 
 
-rule samtools_merge_units:
+rule samtools_merge_collapsed_libs:
     input:
-        get_sample_bams,
+        get_lib_bams,
     output:
-        bam=temp("results/mapping/mapped/{sample}.{ref}.{pairing}.bam"),
+        bam=temp("results/mapping/mapped/{sample}_{lib}.{ref}.merged.bam"),
     log:
-        "logs/mapping/samtools/merge/{sample}.{ref}.{pairing}.log",
+        "logs/mapping/samtools/merge/{sample}_{lib}.{ref}.merged.log",
     benchmark:
-        "benchmarks/mapping/samtools/{sample}.{ref}.{pairing}.log"
+        "benchmarks/mapping/samtools/merge/{sample}_{lib}.{ref}.merged.log"
     threads: lambda wildcards, attempt: attempt * 4
-    wildcard_constraints:
-        pairing="merged|paired",
+    resources:
+        runtime=lambda wildcards, attempt: attempt * 720,
+    wrapper:
+        "v2.6.0/bio/samtools/merge"
+
+
+rule samtools_merge_paired_units:
+    input:
+        get_paired_bams,
+    output:
+        bam=temp("results/mapping/mapped/{sample}.{ref}.paired.bam"),
+    log:
+        "logs/mapping/samtools/merge/{sample}.{ref}.paired.log",
+    benchmark:
+        "benchmarks/mapping/samtools/{sample}.{ref}.paired.log"
+    threads: lambda wildcards, attempt: attempt * 4
     resources:
         runtime=lambda wildcards, attempt: attempt * 720,
     wrapper:
@@ -139,18 +153,18 @@ rule mark_duplicates:
 rule dedup_merged:
     """Remove duplicates from collapsed read bam files"""
     input:
-        "results/mapping/mapped/{sample}.{ref}.merged.bam",
+        "results/mapping/mapped/{sample}_{lib}.{ref}.merged.bam",
     output:
-        json="results/mapping/qc/dedup/{sample}.{ref}.dedup.json",
-        hist="results/mapping/qc/dedup/{sample}.{ref}.dedup.hist",
-        log="results/mapping/qc/dedup/{sample}.{ref}.dedup.log",
-        bam=temp("results/mapping/dedup/{sample}.{ref}.merged_rmdup.bam"),
-        bamfin=temp("results/mapping/dedup/{sample}.{ref}.merged.rmdup.bam"),
-        bai=temp("results/mapping/dedup/{sample}.{ref}.merged.rmdup.bam.bai"),
+        json="results/mapping/qc/dedup/{sample}_{lib}.{ref}.dedup.json",
+        hist="results/mapping/qc/dedup/{sample}_{lib}.{ref}.dedup.hist",
+        log="results/mapping/qc/dedup/{sample}_{lib}.{ref}.dedup.log",
+        bam=temp("results/mapping/dedup/{sample}_{lib}.{ref}.merged_rmdup.bam"),
+        bamfin=temp("results/mapping/dedup/{sample}_{lib}.{ref}.merged.rmdup.bam"),
+        bai=temp("results/mapping/dedup/{sample}_{lib}.{ref}.merged.rmdup.bam.bai"),
     log:
-        "logs/mapping/dedup/{sample}.{ref}.merged.log",
+        "logs/mapping/dedup/{sample}_{lib}.{ref}.merged.log",
     benchmark:
-        "benchmarks/mapping/dedup/{sample}.{ref}.merged.log"
+        "benchmarks/mapping/dedup/{sample}_{lib}.{ref}.merged.log"
     conda:
         "../envs/dedup.yaml"
     shadow:
@@ -165,11 +179,11 @@ rule dedup_merged:
         (dedup -i {input} -m -u -o {params.outdir}
         samtools sort -T {resources.tmpdir} -o {output.bamfin} {output.bam}
         samtools index {output.bamfin}
-        mv {params.outdir}/{wildcards.sample}.{wildcards.ref}.merged.dedup.json \
+        mv {params.outdir}/{wildcards.sample}_{wildcards.lib}.{wildcards.ref}.merged.dedup.json \
             {output.json}
-        mv {params.outdir}/{wildcards.sample}.{wildcards.ref}.merged.hist \
+        mv {params.outdir}/{wildcards.sample}_{wildcards.lib}.{wildcards.ref}.merged.hist \
             {output.hist}
-        mv {params.outdir}/{wildcards.sample}.{wildcards.ref}.merged.log \
+        mv {params.outdir}/{wildcards.sample}_{wildcards.lib}.{wildcards.ref}.merged.log \
             {output.log}) &> {log}
         """
 

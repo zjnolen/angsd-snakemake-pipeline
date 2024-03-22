@@ -373,22 +373,28 @@ def get_read_group(wildcards):
 
 
 ## Get single unit/lib bams for merging
-def get_sample_bams(wildcards):
+def get_lib_bams(wildcards):
+    reads = units.loc[units["sample"] == wildcards.sample]
+    reads = reads.loc[reads["lib"] == wildcards.lib]
+    combos = reads[["sample", "unit", "lib"]].agg("_".join, axis=1)
+    return expand(
+        "results/mapping/mapped/{combo}.{{ref}}.{aligner}.merged.bam",
+        combo=combos,
+        aligner=config["analyses"]["mapping"]["historical_collapsed_aligner"],
+    )
+
+
+def get_paired_bams(wildcards):
     reads = units.loc[units["sample"] == wildcards.sample]
     combos = reads[["sample", "unit", "lib"]].agg("_".join, axis=1)
     if wildcards.sample in samples.index[samples.time == "historical"]:
-        if wildcards.pairing == "paired":
-            return expand(
-                "results/mapping/mapped/{combo}.{{ref}}.mem.uncollapsed.bam",
-                combo=combos,
-            )
-        aligner = config["analyses"]["mapping"]["historical_collapsed_aligner"]
-    else:
-        aligner = "mem"
+        return expand(
+            "results/mapping/mapped/{combo}.{{ref}}.mem.uncollapsed.bam",
+            combo=combos,
+        )
     return expand(
-        "results/mapping/mapped/{combo}.{{ref}}.{aligner}.{{pairing}}.bam",
+        "results/mapping/mapped/{combo}.{{ref}}.mem.paired.bam",
         combo=combos,
-        aligner=aligner,
     )
 
 
@@ -396,12 +402,20 @@ def get_sample_bams(wildcards):
 def get_dedup_bams(wildcards):
     s = wildcards.sample
     if s in samples.index[samples.time == "historical"]:
+        libs = list(set(units.loc[units["sample"] == wildcards.sample]["lib"]))
         if config["analyses"]["mapping"]["historical_only_collapsed"]:
-            return "results/mapping/dedup/{sample}.{ref}.merged.rmdup.bam"
-        return [
-            "results/mapping/dedup/{sample}.{ref}.paired.rmdup.bam",
-            "results/mapping/dedup/{sample}.{ref}.merged.rmdup.bam",
-        ]
+            return expand(
+                "results/mapping/dedup/{{sample}}_{lib}.{{ref}}.merged.rmdup.bam",
+                lib=libs,
+            )
+        output = ["results/mapping/dedup/{sample}.{ref}.paired.rmdup.bam"]
+        output.extend(
+            expand(
+                "results/mapping/dedup/{{sample}}_{lib}.{{ref}}.merged.rmdup.bam",
+                lib=libs,
+            )
+        )
+        return output
     return "results/mapping/dedup/{sample}.{ref}.paired.rmdup.bam"
 
 
