@@ -1,0 +1,46 @@
+site_name: ANGSD Snakemake Pipeline
+nav:
+  - Home: index.md
+  - Getting Started: getting-started.md
+  - Configuration: config.md
+  - Tutorial: tutorial.md
+theme:
+  name: material
+  icon:
+    repo: simple/github
+    admonition:
+      note: octicons/tag-16
+      question: octicons/question-16
+  features:
+    - search.highlight
+  palette:
+    - media: "(prefers-color-scheme)"
+      toggle:
+        icon: material/link
+        name: Switch to light mode
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/toggle-switch
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: black
+      accent: indigo
+      toggle:
+        icon: material/toggle-switch-off
+        name: Switch to system preference
+repo_url: https://github.com/zjnolen/angsd-snakemake-pipeline
+repo_name: zjnolen/angsd-snakemake-pipeline
+plugins:
+  - search
+extra:
+  version:
+    provider: mike
+markdown_extensions:
+  - admonition
+  - pymdownx.details
+  - pymdownx.superfences:
+      preserve_tabs: true

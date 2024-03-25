@@ -1,85 +1,106 @@
-# General Settings
+# Configuring the workflow
 
-In the [`config`](./) directory, you will find template configuration files
-for this pipeline. For your run, you'll need to edit `samples.tsv`,
-`units.tsv`, and `config.yaml`.
+Running the workflow requires configuring three files: `config.yaml`,
+`samples.tsv`, and `units.tsv`. `config.yaml` is used to configure the
+analyses, `samples.tsv` categorizes your samples into groups, and `units.tsv`
+connects sample names to their input data files. The workflow will use
+`config/config.yaml` automatically, but you can name this whatever you want
+(good for separating datasets in same working directory) and point to it when
+running snakemake with `--configfile <path>`.
 
-## Samples list
+### `samples.tsv`
 
-All your samples should be listed in `samples.tsv`. Samples preceded with a `#`
-will not be included, this can be useful if you want to exclude a sample after
-quality checking.
+This file contains your sample list, and has four **tab separated** columns:
 
-Each sample must have four columns filled in the sample sheet. The columns are
-tab separated:
+```
+sample	population	time	depth
+hist1	Hjelmseryd	historical	low
+hist2	Hjelmseryd	historical	low
+hist3	Hjelmseryd	historical	low
+mod1	Gotafors	modern	high
+mod2	Gotafors	modern	high
+mod3	Gotafors	modern	high
+```
 
-- `sample` - The name of the sample
-- `population` - The populations you will group your samples into. These are
-  the groups that population level stats are calculated on.
-- `time` - This should be either `modern` or `historical`, the only thing this
-  will affect is whether or not your bam files will be corrected for
-  post-mortem damage or not.
-- `depth` - This is only used for depth filtering. Extreme levels (both high
-  and low) will be calculated for each group you put here as well as the
-  dataset as a whole, and all will be filtered out for all analyses. Any string
-  can be used for this. If all samples are sequenced to roughly similar depths,
-  all can have the same value. If some are low coverage, and some higher,
-  simply using 'low' and 'high' on the corresponding samples is sufficient.
+- `sample` contains the ID of a sample. It is best if it only contains
+alphanumeric characters.
 
-The values in the sample list will end up in filenames, so ensure that they are
-only characters permitted in filenames on your system.
+- `population` contains the population the sample comes from and will be used
+to group samples for population-level analyses.
 
-## Units list
+- `time` sets whether a sample should be treated as fresh DNA or historical DNA
+in the sequence processing workflow. Doesn't change anything if you're starting
+with bam files.
 
-All your raw data will be pointed to in `units.tsv`.
+- `depth` puts the sample in a sequencing depth category. Used for filtering -
+if enabled in the configuration, extreme depth filters will be performed for
+depth categories individually.
 
-Each row will contain a sample 'unit', this is a unique combination of a
-sample, sequencing run, and library. As such, these columns, as well as a
-fourth for the sequencing platform are required:
+### `units.tsv`
 
-- `sample` - The sample name, same as in `samples.tsv`.
-- `unit` - This describes the sequencing platform unit. The expected format is
-  `sequencerbarcode.lane`. It will be used to fill the `PU` readgroup, and
-  combined with the `lib` column to fill the `ID` read group.
-- `lib` - This is used to fill out the `LB` read group and combined with `unit`
-  to fill out the `ID` read group. This should be a unique identifier for each
-  library. Sequencing runs from the same library, but different runs, will have
-  the same value in `lib`, but different in `unit`.
-- `platform` - This is used to fill out the `PL` read group. Put what you'd
-  want there. Usually `ILLUMINA` for Illumina platforms.
+This file connects your samples to input files and has a potential for eight
+**tab separated** columns:
 
-Additionally, you have three ways to specify sequencing data sources. You can
-provide fastq files available locally on your machine, an SRA run accession to
-automatically download fastq files from NCBI, or a fully processed bam file.
-Only one of these three categories of columns need to be defined. If multiple
-are, the pipeline will prefer bam files > local fastq files > SRA accessions.
+```
+sample	unit	lib	platform	fq1	fq2	bam	sra
+hist1	BHVN22DSX2.2	hist1	ILLUMINA	data/fastq/hist1.r1.fastq.gz	data/fastq/hist1.r2.fastq.gz		
+hist1	BHVN22DSX2.3	hist1	ILLUMINA	data/fastq/hist1.unit2.r1.fastq.gz	data/fastq/hist1.unit2.r2.fastq.gz		
+hist2	BHVN22DSX2.2	hist2	ILLUMINA	data/fastq/hist2.r1.fastq.gz	data/fastq/hist2.r2.fastq.gz		
+hist3	BHVN22DSX2.2	hist2	ILLUMINA	data/fastq/hist3.r1.fastq.gz	data/fastq/hist3.r2.fastq.gz		
+mod1	AHW5NGDSX2.3	mod1	ILLUMINA	data/fastq/mod1.r1.fastq.gz	data/fastq/mod1.r2.fastq.gz		
+mod2	AHW5NGDSX2.3	mod2	ILLUMINA			data/bam/mod2.bam	
+mod3	AHW5NGDSX2.3	mod3	ILLUMINA	data/fastq/mod3.r1.fastq.gz	data/fastq/mod3.r2.fastq.gz		
+SAMN13218652	SRR10398077	SAMN13218652	ILLUMINA				SRR10398077
+```
 
-- `fq1` and `fq2` - The absolute or relative paths from the working directory
-  to the raw fastq files for the sample. Currently the pipeline only supports
-  paired-end sequencing, so both columns are neede. Single end may be added
-  down the line if requested.
-- `sra` - A short read run accession. Since NCBI and ENA mirror each other, the
-  run accession can come from either. Only supports paired-end runs. These are
-  treated as temporary and deleted after trimming, unlike local fastq files,
-  which we never delete.
-- `bam` - If you do not want to map the raw reads, provide a pre-processed
-  BAM file path here. Samples with a BAM file may only appear once in the units
-  list, so multiple sequencing runs should be merged beforehand. If a BAM file
-  is listed, `fq1` and `fq2` are ignored, and the BAM file is used for that
-  sample.
+- `sample` contains the ID of a sample. Must be same as in `samples.tsv` and
+may be listed multiple times when inputting multiple sequencing runs/libraries.
 
-Note: Your dataset can include both samples that start at FASTQ and at BAM. If
-a BAM is listed, it will be used instead of mapping, but if not, the FASTQ
-files will be mapped.
+- `unit` contains the sequencing unit, i.e. the sequencing lane barcode and
+lane number. This is used in the PU and (part of) the ID read groups. If you
+don't have multiple sequencing lanes per samples, this won't impact anything.
+Doesn't do anything when using bam input.
+
+- `lib` contains the name of the library identifier for the entry. Fills in
+the LB and (part of) the ID read groups and is used for PCR duplicate removal.
+Best practice would be to have the combination of `unit` and `lib` to be unique
+per line. An easy way to use this is to use the Illumina library identifier or
+another unique library identifier, or simply combine a generic name with the
+sample name (sample1A, sample1B, etc.). Doesn't do anything when using bam
+input.
+
+- `platform` is used to fill the PL read group. Commonly is just 'ILLUMINA'.
+Doesn't do anything when using bam input.
+
+- `fq1` and `fq2` provides the absolute or relative to the working directory
+paths to the raw sequencing files corresponding to the metadata in the previous
+columns.
+
+- `bam` provides the absolute or relative to the working directory path of
+pre-processed bam files. Only one bam files should be provided per sample in
+the units file.
+
+- `sra` provides the NCBI SRA accession number for a set of paired end fastq
+files that will be downloaded to be processed.
+
+!!! note "Mixing samples with different starting points"
+    It is possible to have different samples start from different inputs (i.e.
+    some from bam, others from fastq, others from SRA). It is best to provide
+    only `fq1`+`fq2`, `bam`, or `sra` for each sample to be clear where each
+    sample starts. If multiple are provided for the same sample, the bam file
+    will override fastq or SRA entries, and the fastq will override SRA
+    entries. Note that this means it is not currently possible to have multiple
+    starting points for *the same* sample (i.e. FASTQ reads that would be
+    processed then merged into an existing BAM).
 
 ## Configuration file
 
 `config.yaml` contains the configuration for the workflow, this is where you
 will put what analyses, filters, and options you want. Below I describe the
-configuration options. The [`config.yaml`](config.yaml) in this repository
-serves as a template, but includes some 'default' parameters that may be good
-starting points for some users. If `--configfile` is not specified in the
-snakemake command, the workflow will default to `config/config.yaml`.
+configuration options. The [`config.yaml`](../config/config.yaml) in this
+repository serves as a template, but includes some 'default' parameters that
+may be good starting points for some users. If `--configfile` is not specified
+in the snakemake command, the workflow will default to `config/config.yaml`.
 
 ### Configuration options
 

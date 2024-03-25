@@ -153,52 +153,103 @@ rule genmap_map:
         fold=rules.genmap_index.output.fold,
         files=rules.genmap_index.output.files,
     output:
-        bed="results/ref/{ref}/genmap/map/{ref}.bedgraph",
+        bed="results/ref/{ref}/genmap/map/{ref}_k{k}_e{e}.bedgraph",
     log:
-        "logs/ref/genmap/map/{ref}.log",
-    log:
-        "benchmarks/ref/genmap/map/{ref}.log",
+        "logs/ref/genmap/map/{ref}_k{k}_e{e}.log",
+    benchmark:
+        "benchmarks/ref/genmap/map/{ref}_k{k}_e{e}.log"
     conda:
         "../envs/genmap.yaml"
     params:
-        K=config["params"]["genmap"]["K"],
-        E=config["params"]["genmap"]["E"],
         out=lambda w, output: os.path.splitext(output.bed)[0],
     threads: lambda wildcards, attempt: attempt
     resources:
         runtime=lambda wildcards, attempt: attempt * 360,
     shell:
         """
-        genmap map -K {params.K} -E {params.E} -I {input.fold} \
+        genmap map -K {wildcards.k} -E {wildcards.e} -I {input.fold} \
             -O {params.out} -bg &> {log}
+        """
+
+
+rule windowgen:
+    """
+    Generate sliding windows across the genome to average mappability over.
+    """
+    input:
+        bed="results/ref/{ref}/beds/genome.bed",
+    output:
+        bed="results/ref/{ref}/genmap/pileup/{ref}_genome_windows_k{k}.bed",
+    log:
+        "logs/ref/genmap/windowgen/{ref}_k{k}.log",
+    benchmark:
+        "benchmarks/ref/genmap/windowgen/{ref}_k{k}.log"
+    conda:
+        "../envs/bedtools.yaml"
+    resources:
+        runtime=720,
+    shell:
+        """
+        bedtools makewindows -b {input.bed} -w {wildcards.k} -s 1 > {output.bed} 2> {log}
+        """
+
+
+rule pileup_mappability:
+    """
+    Generates a bed file containing the pileup mappability of a site, i.e. the
+    mean mappability of all possible kmers mapping to it.
+    """
+    input:
+        bed="results/ref/{ref}/genmap/pileup/{ref}_genome_windows_k{k}.bed",
+        bgr="results/ref/{ref}/genmap/map/{ref}_k{k}_e{e}.bedgraph",
+    output:
+        bed="results/ref/{ref}/genmap/pileup/{ref}_pileup_mappability_k{k}_e{e}.bed",
+        tmp=temp("results/ref/{ref}/genmap/map/{ref}_k{k}_e{e}.bedgraph.tmp"),
+    log:
+        "logs/ref/genmap/pileupmap/{ref}_k{k}_e{e}.log",
+    benchmark:
+        "benchmarks/ref/genmap/pileupmap/{ref}_k{k}_e{e}.log"
+    conda:
+        "../envs/bedops.yaml"
+    resources:
+        runtime=720,
+    shell:
+        r"""
+        awk '{{print $1"\t"$2"\t"$3"\t"$2"-"$3"\t"$4}}' {input.bgr} > {output.tmp}
+        bedmap --echo --wmean {input.bed} {output.tmp} | tr "|" "\t" | \
+            awk '{{print $1"\t"$3-1"\t"$3"\t"$4}}' > {output.bed} 2> {log}
         """
 
 
 rule genmap_filt_bed:
     """Create a bed containing all sites with a mappability below a set threshold"""
     input:
-        genbed="results/ref/{ref}/genmap/map/{ref}.bedgraph",
+        genbed="results/ref/{ref}/genmap/pileup/{ref}_pileup_mappability_k{k}_e{e}.bed",
         gensum="results/ref/{ref}/beds/genome.bed.sum",
     output:
-        bed="results/datasets/{dataset}/filters/lowmap/{ref}_lowmap.bed",
-        sum="results/datasets/{dataset}/filters/lowmap/{ref}_lowmap.bed.sum",
+        bed="results/datasets/{dataset}/filters/pileupmap/{ref}_k{k}_e{e}_{thresh}.bed",
+        tmp=temp(
+            "results/datasets/{dataset}/filters/pileupmap/{ref}_k{k}_e{e}_{thresh}.bed.tmp"
+        ),
+        sum="results/datasets/{dataset}/filters/pileupmap/{ref}_k{k}_e{e}_{thresh}.bed.sum",
     log:
-        "logs/{dataset}/filters/lowmap/{ref}_lowmap.log",
+        "logs/{dataset}/filters/pileupmap/{ref}_k{k}_e{e}_{thresh}.log",
     benchmark:
-        "benchmarks/{dataset}/filters/lowmap/{ref}_lowmap.log"
+        "benchmarks/{dataset}/filters/pileupmap/{ref}_k{k}_e{e}_{thresh}.log"
     conda:
-        "../envs/shell.yaml"
+        "../envs/bedtools.yaml"
     params:
         thresh=config["params"]["genmap"]["map_thresh"],
     shell:
         r"""
         # generate bed
-        (awk '$4 < {params.thresh}' {input.genbed} > {output.bed}
+        (awk '$4 < {params.thresh}' {input.genbed} > {output.tmp}
+        bedtools merge -i {output.tmp} > {output.bed}
 
         #summarize bed
         len=$(awk 'BEGIN{{SUM=0}}{{SUM+=$3-$2}}END{{print SUM}}' {output.bed})
         echo $len $(awk -F "\t" '{{print $2}}' {input.gensum}) | awk \
-            '{{print "Mappability<{params.thresh}\t"$2-$1"\t"($2-$1)/$2*100}}' \
+            '{{print "Pileup mappability K{wildcards.k}-E{wildcards.e} <{params.thresh}\t"$2-$1"\t"($2-$1)/$2*100}}' \
             > {output.sum}) 2> {log}
         """
 
@@ -293,10 +344,10 @@ rule repeatmasker:
 rule repeat_sum:
     """Summarize the proportion of the genome contained in the repeat gff"""
     input:
+        unpack(get_rep_file),
         sum="results/ref/{ref}/beds/genome.bed.sum",
-        gff="results/ref/{ref}/repeatmasker/{ref}.fa.out.gff",
     output:
-        sum="results/ref/{ref}/repeatmasker/{ref}.fa.out.gff.sum",
+        sum="results/ref/{ref}/repeatmasker/{ref}.fa.out.sum",
         bed="results/ref/{ref}/repeatmasker/{ref}.fa.out.bed",
     log:
         "logs/ref/repeatmasker/summarize_gff/{ref}.log",
@@ -306,7 +357,7 @@ rule repeat_sum:
         "../envs/bedtools.yaml"
     shell:
         r"""
-        (bedtools merge -i {input.gff} > {output.bed}
+        (bedtools sort -i {input.rep} | bedtools merge > {output.bed}
         len=$(awk 'BEGIN{{SUM=0}}{{SUM+=$3-$2}}END{{print SUM}}' {output.bed})
         echo $len $(awk -F "\t" '{{print $2}}' {input.sum}) | \
             awk '{{print "Repeats\t"$2-$1"\t"($2-$1)/$2*100}}' > {output.sum}) &> {log}
@@ -386,7 +437,17 @@ if config["analyses"]["extreme_depth"]:
         input:
             "results/datasets/{dataset}/filters/depth/{dataset}.{ref}_{population}{dp}.depthGlobal",
         output:
-            "results/datasets/{dataset}/filters/depth/{dataset}.{ref}_{population}{dp}_depth.summary",
+            summ="results/datasets/{dataset}/filters/depth/{dataset}.{ref}_{population}{dp}_depth.summary",
+            plot=report(
+                "results/datasets/{dataset}/plots/depth_dist/{dataset}.{ref}_{population}{dp}_depth.svg",
+                category="00 Quality Control",
+                subcategory="2 Depth distributions and filters",
+                labels=lambda w: {
+                    "Subset": "{population}",
+                    **dp_report(w),
+                    "Type": "Histogram",
+                },
+            ),
         log:
             "logs/{dataset}/filters/depth/{dataset}.{ref}_{population}{dp}_depth_extremes.log",
         benchmark:
@@ -394,8 +455,9 @@ if config["analyses"]["extreme_depth"]:
         conda:
             "../envs/r.yaml"
         params:
-            lower=config["analyses"]["extreme_depth"][0],
-            upper=config["analyses"]["extreme_depth"][1],
+            lower=config["params"]["extreme_depth_filt"]["bounds"][0],
+            upper=config["params"]["extreme_depth_filt"]["bounds"][1],
+            method=config["params"]["extreme_depth_filt"]["method"],
         threads: lambda wildcards, attempt: attempt * 2
         script:
             "../scripts/depth_extremes.R"
@@ -404,13 +466,15 @@ if config["analyses"]["extreme_depth"]:
         """Create a bed file containing regions of extreme depth in a subset"""
         input:
             genbed="results/ref/{ref}/beds/genome.bed",
+            gensum="results/ref/{ref}/beds/genome.bed.sum",
             quants="results/datasets/{dataset}/filters/depth/{dataset}.{ref}_{population}{dp}_depth.summary",
             pos=lambda w: expand(
                 "results/datasets/{{dataset}}/filters/depth/{{dataset}}.{{ref}}_{{population}}{{dp}}_chunk{chunk}.pos.gz",
                 chunk=chunklist,
             ),
         output:
-            "results/datasets/{dataset}/filters/depth/{dataset}.{ref}_{population}{dp}_extreme-depth.bed",
+            bed="results/datasets/{dataset}/filters/depth/{dataset}.{ref}_{population}{dp}_extreme-depth.bed",
+            sum="results/datasets/{dataset}/filters/depth/{dataset}.{ref}_{population}{dp}_extreme-depth.bed.sum",
         log:
             "logs/{dataset}/filters/depth/bed/{dataset}.{ref}_{population}{dp}.log",
         benchmark:
@@ -424,54 +488,61 @@ if config["analyses"]["extreme_depth"]:
             upper=$(awk '{{print $3}}' {input.quants})
             for i in {input.pos}; do
                 zcat $i | tail -n +2 | \
-                awk -v lower=$lower -v upper=$upper '$3 > lower && $3 < upper'
+                awk -v lower=$lower -v upper=$upper '$3 >= lower && $3 < upper'
             done | \
-            awk '{{print $1"\t"$2-1"\t"$2}}' > {output}
-            bedtools merge -i {output} > {output}.tmp
-            bedtools subtract -a {input.genbed} -b {output}.tmp > {output}
-            rm {output}.tmp) 2> {log}
-            """
-
-    rule combine_depth_bed:
-        """
-        Combine beds for each subset to get a set of regions with extreme depth in any
-        subset
-        """
-        input:
-            beds=expand(
-                "results/datasets/{{dataset}}/filters/depth/{{dataset}}.{{ref}}_{population}{{dp}}_extreme-depth.bed",
-                population=["all"] + list(set(samples.depth.values)),
-            ),
-            gensum="results/ref/{ref}/beds/genome.bed.sum",
-        output:
-            bed="results/datasets/{dataset}/filters/depth/{dataset}.{ref}{dp}_extreme-depth.bed",
-            sum="results/datasets/{dataset}/filters/depth/{dataset}.{ref}{dp}_extreme-depth.bed.sum",
-        log:
-            "logs/{dataset}/filters/depth/bed/{dataset}.{ref}{dp}_combine-bed.log",
-        benchmark:
-            "benchmarks/{dataset}/filters/depth/bed/{dataset}.{ref}{dp}_combine-bed.log"
-        conda:
-            "../envs/bedtools.yaml"
-        shadow:
-            "minimal"
-        resources:
-            runtime=240,
-        shell:
-            """
-            # combine beds
-            (cat {input.beds} > {output.bed}.tmp
-            sort -k1,1 -k2,2n {output.bed}.tmp > {output.bed}.tmp.sort
+            awk '{{print $1"\t"$2-1"\t"$2}}' > {output.bed}
+            bedtools merge -i {output.bed} > {output.bed}.tmp
+            bedtools subtract -a {input.genbed} -b {output.bed}.tmp > {output.bed}
             rm {output.bed}.tmp
-
-            bedtools merge -i {output.bed}.tmp.sort > {output.bed}
-            rm {output.bed}.tmp.sort
-
+            
             # summarize bed
             len=$(awk 'BEGIN{{SUM=0}}{{SUM+=$3-$2}}END{{print SUM}}' {output.bed})
             echo $len $(awk -F "\t" '{{print $2}}' {input.gensum}) | \
-                awk '{{print "Depth\t"$2-$1"\t"($2-$1)/$2*100}}' \
+                awk '{{print "Depth ({wildcards.population})\t"$2-$1"\t"($2-$1)/$2*100}}' \
                 > {output.sum}) 2> {log}
             """
+
+
+# rule combine_depth_bed:
+#     """
+#     Combine beds for each subset to get a set of regions with extreme depth in any
+#     subset
+#     """
+#     input:
+#         beds=expand(
+#             "results/datasets/{{dataset}}/filters/depth/{{dataset}}.{{ref}}_{population}{{dp}}_extreme-depth.bed",
+#             population=["all"] + list(set(samples.depth.values)),
+#         ),
+#         gensum="results/ref/{ref}/beds/genome.bed.sum",
+#     output:
+#         bed="results/datasets/{dataset}/filters/depth/{dataset}.{ref}{dp}_extreme-depth.bed",
+#         sum="results/datasets/{dataset}/filters/depth/{dataset}.{ref}{dp}_extreme-depth.bed.sum",
+#     log:
+#         "logs/{dataset}/filters/depth/bed/{dataset}.{ref}{dp}_combine-bed.log",
+#     benchmark:
+#         "benchmarks/{dataset}/filters/depth/bed/{dataset}.{ref}{dp}_combine-bed.log"
+#     conda:
+#         "../envs/bedtools.yaml"
+#     shadow:
+#         "minimal"
+#     resources:
+#         runtime=240,
+#     shell:
+#         """
+#         # combine beds
+#         (cat {input.beds} > {output.bed}.tmp
+#         sort -k1,1 -k2,2n {output.bed}.tmp > {output.bed}.tmp.sort
+#         rm {output.bed}.tmp
+
+#         bedtools merge -i {output.bed}.tmp.sort > {output.bed}
+#         rm {output.bed}.tmp.sort
+
+#         # summarize bed
+#         len=$(awk 'BEGIN{{SUM=0}}{{SUM+=$3-$2}}END{{print SUM}}' {output.bed})
+#         echo $len $(awk -F "\t" '{{print $2}}' {input.gensum}) | \
+#             awk '{{print "Depth\t"$2-$1"\t"($2-$1)/$2*100}}' \
+#             > {output.sum}) 2> {log}
+#         """
 
 
 rule angsd_missdata:
@@ -500,6 +571,7 @@ rule angsd_missdata:
         angsd_container
     params:
         nind=lambda w: len(get_samples_from_pop(w.population)),
+        mindpind=config["params"]["angsd"]["missing_data_mindepthind"],
         extra=config["params"]["angsd"]["extra"],
         mapQ=config["mapQ"],
         baseQ=config["baseQ"],
@@ -516,7 +588,7 @@ rule angsd_missdata:
         angsd -bam {input.bamlist} -nThreads {threads} -rf {input.regions} \
             -ref {input.ref} -doCounts 1 -dumpCounts 1 -minInd $minInd \
             {params.extra} -minMapQ {params.mapQ} -minQ {params.baseQ} \
-            -out {params.out}) 2> {log}
+            -setMinDepthInd {params.mindpind} -out {params.out}) 2> {log}
         """
 
 
@@ -666,9 +738,9 @@ rule filter_summary_table:
     output:
         report(
             "results/datasets/{dataset}/filters/combined/{dataset}.{ref}{dp}_{sites}-filts.html",
-            category="Quality Control",
-            subcategory="Filtering Summary",
-            labels={"Filter": "{sites}", "Type": "Table"},
+            category="00 Quality Control",
+            subcategory="3 Filtering Summary",
+            labels=lambda w: {"Filter": "{sites}", **dp_report(w), "Type": "Table"},
         ),
     log:
         "logs/{dataset}/filters/combine/{dataset}.{ref}{dp}_{sites}-filts_tsv2html.log",

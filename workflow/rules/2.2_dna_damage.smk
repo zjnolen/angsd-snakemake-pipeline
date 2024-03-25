@@ -7,7 +7,7 @@ rule damageprofiler:
     rather than corrective.
     """
     input:
-        bam="results/mapping/bams/{sample}.{ref}.rmdup.realn.bam",
+        bam="results/mapping/bams/{sample}.{ref}.rmdup.realn.clip.bam",
         ref="results/ref/{ref}/{ref}.fa",
     output:
         multiext(
@@ -56,7 +56,7 @@ rule mapDamage2_rescaling:
     quality scores to correct for damage.
     """
     input:
-        bam="results/mapping/bams/{sample}.{ref}.rmdup.realn.bam",
+        bam="results/mapping/bams/{sample}.{ref}.rmdup.realn.clip.bam",
         ref="results/ref/{ref}/{ref}.fa",
     output:
         log="results/mapping/qc/mapdamage/{sample}.{ref}/Runtime_log.txt",
@@ -67,7 +67,7 @@ rule mapDamage2_rescaling:
         len="results/mapping/qc/mapdamage/{sample}.{ref}/Length_plot.pdf",
         lg_dist="results/mapping/qc/mapdamage/{sample}.{ref}/lgdistribution.txt",
         misincorp="results/mapping/qc/mapdamage/{sample}.{ref}/misincorporation.txt",
-        rescaled_bam="results/mapping/bams/{sample}.{ref}.rmdup.realn.rescaled.bam",
+        rescaled_bam="results/mapping/bams/{sample}.{ref}.rmdup.realn.clip.rescaled.bam",
     log:
         "logs/mapping/mapdamage/{sample}.{ref}.log",
     benchmark:
@@ -79,3 +79,21 @@ rule mapDamage2_rescaling:
         mem_mb=lambda w, attempt: attempt * 6400,
     wrapper:
         "v2.6.0/bio/mapdamage2"
+
+
+rule dna_damage_multiqc:
+    input:
+        multiqc_input_dnadmg,
+    output:
+        report(
+            "results/datasets/{dataset}/qc/dna-damage-mqc/dna-damage_all.{ref}_mqc.html",
+            category="00 Quality Control",
+            subcategory="4 DNA Damage",
+            labels={"Type": "MultiQC Report"},
+        ),
+    log:
+        "logs/mapping/dnadamage/{dataset}.{ref}_dnadmg-mqc.log",
+    params:
+        extra="--cl-config \"extra_fn_clean_exts: ['.rmdup']\" ",
+    wrapper:
+        "v3.5.0/bio/multiqc"

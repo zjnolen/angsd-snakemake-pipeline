@@ -5,7 +5,7 @@ library(ggplot2)
 plot_pca <- function(cov, pop, xpc, ypc, plotout){
 
   C <- as.matrix(read.table(cov))
-  pop <- read.table(pop, header = TRUE)
+  pop <- read.table(pop, header = TRUE, sep = "\t")
 
   e <- eigen(C)
 

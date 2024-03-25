@@ -1,8 +1,9 @@
-sample	unit	lib	platform	fq1	fq2	realname
-hist1	BHVN22DSX2.2	hist1	ILLUMINA	data/fastq/hist1.r1.fastq.gz	data/fastq/hist1.r2.fastq.gz	MZLU153040
-hist1	BHVN22DSX2.3	hist1	ILLUMINA	data/fastq/hist1.unit2.r1.fastq.gz	data/fastq/hist1.unit2.r2.fastq.gz	MZLU153040
-hist2	BHVN22DSX2.2	hist2	ILLUMINA	data/fastq/hist2.r1.fastq.gz	data/fastq/hist2.r2.fastq.gz	MZLU153042
-hist3	BHVN22DSX2.2	hist2	ILLUMINA	data/fastq/hist3.r1.fastq.gz	data/fastq/hist3.r2.fastq.gz	MZLU153045
-mod1	AHW5NGDSX2.3	mod1	ILLUMINA	data/fastq/mod1.r1.fastq.gz	data/fastq/mod1.r2.fastq.gz	MZLU107434
-mod2	AHW5NGDSX2.3	mod2	ILLUMINA	data/fastq/mod2.r1.fastq.gz	data/fastq/mod2.r2.fastq.gz	MZLU107435
-mod3	AHW5NGDSX2.3	mod3	ILLUMINA	data/fastq/mod3.r1.fastq.gz	data/fastq/mod3.r2.fastq.gz	MZLU107436
+sample	unit	lib	platform	fq1	fq2	bam	sra	realname
+hist1	BHVN22DSX2.2	hist1	ILLUMINA	data/fastq/hist1.r1.fastq.gz	data/fastq/hist1.r2.fastq.gz			MZLU153040
+hist1	BHVN22DSX2.3	hist1	ILLUMINA	data/fastq/hist1.unit2.r1.fastq.gz	data/fastq/hist1.unit2.r2.fastq.gz			MZLU153040
+hist2	BHVN22DSX2.2	hist2	ILLUMINA	data/fastq/hist2.r1.fastq.gz	data/fastq/hist2.r2.fastq.gz			MZLU153042
+hist3	BHVN22DSX2.2	hist2	ILLUMINA	data/fastq/hist3.r1.fastq.gz	data/fastq/hist3.r2.fastq.gz			MZLU153045
+mod1	AHW5NGDSX2.3	mod1	ILLUMINA	data/fastq/mod1.r1.fastq.gz	data/fastq/mod1.r2.fastq.gz			MZLU107434
+mod2	AHW5NGDSX2.3	mod2	ILLUMINA	data/fastq/mod2.r1.fastq.gz	data/fastq/mod2.r2.fastq.gz	data/bam/mod2.bam		MZLU107435
+mod3	AHW5NGDSX2.3	mod3	ILLUMINA	data/fastq/mod3.r1.fastq.gz	data/fastq/mod3.r2.fastq.gz			MZLU107436
+SAMN13218652	SRR10398077	SAMN13218652	ILLUMINA				SRR10398077	SAMN13218652 from NCBI, for testing NCBI downloading. Is a random, smallish paired end run fastq

@@ -10,9 +10,9 @@ rule samtools_flagstat:
     Estimate statistics for samtools flags. Needed to assess mapping percentage
     """
     input:
-        "results/mapping/mapped/{prefix}.bam",
+        "results/{prefix}.bam",
     output:
-        "results/mapping/mapped/{prefix}.flagstat",
+        "results/{prefix}.flagstat",
     log:
         "logs/mapping/samtools/flagstat/{prefix}.log",
     benchmark:
@@ -29,15 +29,10 @@ rule qualimap:
         unpack(get_final_bam),
     output:
         directory("results/mapping/qc/qualimap/{sample}.{ref}"),
-        pdf=report(
-            "results/mapping/qc/qualimap/{sample}.{ref}/report.pdf",
-            category="Quality Control",
-            subcategory="Mapping Reports",
-            labels={"Sample": "{sample}", "Ref": "{ref}", "Type": "Qualimap Report"},
-        ),
+        rep="results/mapping/qc/qualimap/{sample}.{ref}/qualimapReport.html",
         txt="results/mapping/qc/qualimap/{sample}.{ref}/genome_results.txt",
     params:
-        extra="-outformat pdf",
+        extra="",
     log:
         "logs/mapping/qualimap/{sample}.{ref}.log",
     benchmark:
@@ -48,34 +43,66 @@ rule qualimap:
         "v2.6.0/bio/qualimap/bamqc"
 
 
+rule qualimap_userprovided:
+    """
+    Estimate general mapping statistics for each user-provided sample bam file.
+    """
+    input:
+        unpack(get_final_bam),
+    output:
+        directory(
+            "results/datasets/{dataset}/qc/user-provided-bams/qualimap/{sample}.{ref}"
+        ),
+        rep="results/datasets/{dataset}/qc/user-provided-bams/qualimap/{sample}.{ref}/qualimapReport.html",
+        txt="results/datasets/{dataset}/qc/user-provided-bams/qualimap/{sample}.{ref}/genome_results.txt",
+    params:
+        extra="",
+    log:
+        "logs/mapping/qualimap/{dataset}.{sample}.{ref}.log",
+    benchmark:
+        "benchmarks/mapping/qualimap/{dataset}.{sample}.{ref}.log"
+    resources:
+        runtime=360,
+    wrapper:
+        "v2.6.0/bio/qualimap/bamqc"
+
+
+rule qualimap_multiqc:
+    input:
+        multiqc_input_qualimap,
+    output:
+        report(
+            "results/datasets/{dataset}/qc/qualimap/qualimap_all.{ref}_mqc.html",
+            category="00 Quality Control",
+            subcategory="5 Qualimap",
+            labels={"Type": "MultiQC Report"},
+        ),
+    log:
+        "logs/mapping/qualimap/{dataset}.{ref}_mqc.log",
+    params:
+        extra="--cl-config \"extra_fn_clean_exts: ['.rmdup', '.clip']\" "
+        '--cl-config "qualimap_config: { general_stats_coverage: [1,2,3,5,10,15] }"',
+    wrapper:
+        "v3.5.0/bio/multiqc"
+
+
 rule endo_cont:
     """
     Estimate the proportion of reads mapping to the reference as a proxy for endogenous
     content.
     """
     input:
-        get_endo_cont_stat,
+        unpack(get_endo_cont_stat),
     output:
-        "results/mapping/qc/endogenous_content/{sample}.{ref}.endo",
+        endo="results/datasets/{dataset}/qc/endogenous_content/{dataset}.{sample}.{ref}.endo",
     conda:
         "../envs/shell.yaml"
     log:
-        "logs/mapping/endogenous_content/{sample}.{ref}.log",
+        "logs/datasets/{dataset}/qc/endogenous_content/{dataset}.{sample}.{ref}.log",
     benchmark:
-        "benchmarks/mapping/endogenous_content/{sample}.{ref}.log"
-    shell:
-        r"""
-        (total=$(grep -E "^[0-9]+ \+ [0-9]+ in total" {input} \
-            | awk '{{print $1}}')
-        mapped=$(grep -E "^[0-9]+ \+ [0-9]+ mapped" {input} \
-            | awk '{{print $1}}')
-        primary=$(grep -E "^[0-9]+ \+ [0-9]+ primary mapped" {input} \
-            | awk '{{print $1}}')
-
-        echo $total $mapped $primary {wildcards.sample} | \
-            awk '{{printf "%s\t%.3f\t%.3f\n",$4,$2/$1*100,$3/$1*100}}' \
-            > {output}) 2> {log}
-        """
+        "benchmarks/datasets/{dataset}/qc/endogenous_content/{dataset}.{sample}.{ref}.log"
+    script:
+        "../scripts/calc_endocont.sh"
 
 
 rule compile_endo_cont:
@@ -84,7 +111,7 @@ rule compile_endo_cont:
     """
     input:
         lambda w: expand(
-            "results/mapping/qc/endogenous_content/{sample}.{{ref}}.endo",
+            "results/datasets/{{dataset}}/qc/endogenous_content/{{dataset}}.{sample}.{{ref}}.endo",
             sample=get_samples_from_pop("all"),
         ),
     output:
@@ -99,7 +126,7 @@ rule compile_endo_cont:
         runtime=lambda wildcards, attempt: attempt * 15,
     shell:
         """
-        (printf "sample\tperc.map\tperc.prim.map\n" > {output}
+        (printf "sample\tperc.collapsed.map\tperc.uncollapsed.map\tperc.total.map\n" > {output}
         cat {input} >> {output}) 2> {log}
         """
 
@@ -138,18 +165,55 @@ rule ind_unfiltered_depth:
         """
 
 
-rule ind_filtered_depth:
+rule ind_mapQ_baseQ_depth:
     """
-    Estimate depth at positions using filters for main workflow. This describes the
-    depth of positions that will go into likelihood calculations
+    Estimate sample depth with only mapping and base quality filters. Also
+    includes universal 'extra' params user provides for ANGSD. This makes it
+    compatible with using -trim
     """
     input:
         bamlist="results/datasets/{dataset}/bamlists/{dataset}.{ref}_{population}{dp}.bamlist",
         bams=get_bamlist_bams,
         bais=get_bamlist_bais,
         ref="results/ref/{ref}/{ref}.fa",
-        sites="results/datasets/{dataset}/filters/combined/{dataset}.{ref}{dp}_{sites}-filts.sites",
-        idx="results/datasets/{dataset}/filters/combined/{dataset}.{ref}{dp}_{sites}-filts.sites.idx",
+    output:
+        sample_hist="results/mapping/qc/ind_depth/mapq-baseq-filtered/{dataset}.{ref}_{population}{dp}_allsites-mapq{mapq}-baseq{baseq}-filt.depthSample",
+        global_hist=temp(
+            "results/mapping/qc/ind_depth/mapq-baseq-filtered/{dataset}.{ref}_{population}{dp}_allsites-mapq{mapq}-baseq{baseq}-filt.depthGlobal"
+        ),
+        arg="results/mapping/qc/ind_depth/mapq-baseq-filtered/{dataset}.{ref}_{population}{dp}_allsites-mapq{mapq}-baseq{baseq}-filt.arg",
+    log:
+        "logs/mapping/ind_depth/mapq-baseq-filtered/{dataset}.{ref}_{population}{dp}_allsites-mapq{mapq}-baseq{baseq}-filt.log",
+    benchmark:
+        "benchmarks/mapping/ind_depth/mapq-baseq-filtered/{dataset}.{ref}_{population}{dp}_allsites-mapq{mapq}-baseq{baseq}-filt.log"
+    container:
+        angsd_container
+    params:
+        out=lambda w, output: os.path.splitext(output.arg)[0],
+        extra=config["params"]["angsd"]["extra"],
+        maxdepth=config["params"]["angsd"]["maxdepth"],
+    threads: lambda wildcards, attempt: attempt
+    resources:
+        runtime=lambda wildcards, attempt: attempt * 120,
+    shell:
+        """
+        angsd -doDepth 1 -doCounts 1 -maxDepth {params.maxdepth} \
+            -minMapQ {wildcards.mapq} -minQ {wildcards.baseq} {params.extra} \
+            -bam {input.bamlist} -nThreads {threads} -out {params.out} &> {log}
+        """
+
+
+rule ind_filtered_depth:
+    """
+    Estimate depth at positions using filters for main workflow. This describes the
+    depth of positions that will go into likelihood calculations
+    """
+    input:
+        unpack(filt_depth),
+        bamlist="results/datasets/{dataset}/bamlists/{dataset}.{ref}_{population}{dp}.bamlist",
+        bams=get_bamlist_bams,
+        bais=get_bamlist_bais,
+        ref="results/ref/{ref}/{ref}.fa",
     output:
         sample_hist="results/datasets/{dataset}/qc/ind_depth/filtered/{dataset}.{ref}_{population}{dp}_{sites}-filts.depthSample",
         global_hist=temp(
@@ -272,9 +336,9 @@ rule sample_qc_summary:
     output:
         report(
             "results/datasets/{dataset}/qc/{dataset}.{ref}_all{dp}.sampleqc.html",
-            category="Quality Control",
-            subcategory="Sample coverage and endogenous content",
-            labels={"Type": "Table"},
+            category="00 Quality Control",
+            subcategory="6 Sample depth and endogenous content",
+            labels=lambda w: {**dp_report(w), "Type": "Table"},
         ),
     log:
         "logs/{dataset}/combine_sample_qc/{dataset}.{ref}{dp}_tsv2html.log",

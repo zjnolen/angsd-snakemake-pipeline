@@ -20,7 +20,12 @@ rule realSFS_fst_index:
         ),
         sfs="results/datasets/{dataset}/analyses/sfs/{dataset}.{ref}_{population1}-{population2}{dp}_{sites}-filts.sfs",
     output:
-        fstidx="results/datasets/{dataset}/analyses/fst/{dataset}.{ref}_{population1}-{population2}{dp}_{sites}-filts.fst.idx",
+        fstidx=temp(
+            "results/datasets/{dataset}/analyses/fst/{dataset}.{ref}_{population1}-{population2}{dp}_{sites}-filts.fst.idx"
+        ),
+        fstgz=temp(
+            "results/datasets/{dataset}/analyses/fst/{dataset}.{ref}_{population1}-{population2}{dp}_{sites}-filts.fst.gz"
+        ),
     container:
         angsd_container
     log:
@@ -46,6 +51,7 @@ rule realSFS_fst_stats:
     """
     input:
         fstidx="results/datasets/{dataset}/analyses/fst/{dataset}.{ref}_{population1}-{population2}{dp}_{sites}-filts.fst.idx",
+        fstgz="results/datasets/{dataset}/analyses/fst/{dataset}.{ref}_{population1}-{population2}{dp}_{sites}-filts.fst.gz",
     output:
         fstglob="results/datasets/{dataset}/analyses/fst/{dataset}.{ref}_{population1}-{population2}{dp}_{sites}-filts.fst.global.tsv",
     container:
@@ -70,6 +76,7 @@ rule realSFS_fst_stats2:
     """
     input:
         fstidx="results/datasets/{dataset}/analyses/fst/{dataset}.{ref}_{population1}-{population2}{dp}_{sites}-filts.fst.idx",
+        fstgz="results/datasets/{dataset}/analyses/fst/{dataset}.{ref}_{population1}-{population2}{dp}_{sites}-filts.fst.gz",
     output:
         fstwin="results/datasets/{dataset}/analyses/fst/{dataset}.{ref}_{population1}-{population2}{dp}_{sites}-filts.fst.window_{win}_{step}.tsv",
     container:
@@ -146,7 +153,7 @@ rule plot_fst:
     output:
         report(
             "results/datasets/{dataset}/plots/fst/{dataset}.{ref}_{unit}pairs{dp}_{sites}-filts.fst.global.pdf",
-            category="Fst",
+            category="05 Fst",
             subcategory="Global",
             labels=lambda w: {
                 "Filter": "{sites}",

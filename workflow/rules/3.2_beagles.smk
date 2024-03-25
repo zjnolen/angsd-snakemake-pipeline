@@ -9,20 +9,17 @@ rule angsd_doGlf2:
     population beagle files, even if a population is fixed for a certain allele.
     """
     input:
+        unpack(filt_depth),
+        unpack(get_anc_ref),
         bam="results/datasets/{dataset}/bamlists/{dataset}.{ref}_{population}{dp}.bamlist",
         bams=get_bamlist_bams,
         bais=get_bamlist_bais,
         ref="results/ref/{ref}/{ref}.fa",
+        reffai="results/ref/{ref}/{ref}.fa.fai",
         regions="results/datasets/{dataset}/filters/chunks/{ref}_chunk{chunk}.rf",
-        sites="results/datasets/{dataset}/filters/combined/{dataset}.{ref}_{sites}-filts.sites",
-        idx="results/datasets/{dataset}/filters/combined/{dataset}.{ref}_{sites}-filts.sites.idx",
     output:
-        beagle=temp(
-            "results/datasets/{dataset}/beagles/chunks/{dataset}.{ref}_{population}{dp}_chunk{chunk}_{sites}-filts.beagle.gz"
-        ),
-        maf=temp(
-            "results/datasets/{dataset}/beagles/chunks/{dataset}.{ref}_{population}{dp}_chunk{chunk}_{sites}-filts.mafs.gz"
-        ),
+        beagle="results/datasets/{dataset}/beagles/chunks/{dataset}.{ref}_{population}{dp}_chunk{chunk}_{sites}-filts.beagle.gz",
+        maf="results/datasets/{dataset}/beagles/chunks/{dataset}.{ref}_{population}{dp}_chunk{chunk}_{sites}-filts.mafs.gz",
         arg="results/datasets/{dataset}/beagles/chunks/{dataset}.{ref}_{population}{dp}_chunk{chunk}_{sites}-filts.arg",
     log:
         "logs/{dataset}/angsd/doGlf2/{dataset}.{ref}_{population}{dp}_chunk{chunk}_{sites}-filts.log",
@@ -33,10 +30,14 @@ rule angsd_doGlf2:
     params:
         gl_model=config["params"]["angsd"]["gl_model"],
         extra=config["params"]["angsd"]["extra"],
+        extra_beagle=config["params"]["angsd"]["extra_beagle"],
         mapQ=config["mapQ"],
         baseQ=config["baseQ"],
         snp_pval=config["params"]["angsd"]["snp_pval"],
+        maf=config["params"]["angsd"]["domaf"],
         minmaf=config["params"]["angsd"]["min_maf"],
+        majmin=config["params"]["angsd"]["domajorminor"],
+        counts=get_docounts,
         nind=lambda w: len(get_samples_from_pop(w.population)),
         out=lambda w, output: os.path.splitext(output.arg)[0],
     threads: lambda wildcards, attempt: attempt
@@ -45,10 +46,11 @@ rule angsd_doGlf2:
     shell:
         """
         angsd -doGlf 2 -bam {input.bam} -GL {params.gl_model} -ref {input.ref} \
-            -doMajorMinor 1 -doMaf 1 -SNP_pval {params.snp_pval} \
-            -minMaf {params.minmaf} -nThreads {threads} {params.extra} \
+            -doMajorMinor {params.majmin} -doMaf {params.maf} -minMaf {params.minmaf} \
+            -SNP_pval {params.snp_pval} -nThreads {threads} {params.extra} \
             -minMapQ {params.mapQ} -minQ {params.baseQ} -sites {input.sites} \
-            -rf {input.regions} -out {params.out} &> {log}
+            -anc {input.anc} {params.extra_beagle} -rf {input.regions} \
+            {params.counts} -out {params.out} &> {log}
         """
 
 
@@ -118,13 +120,13 @@ rule snpset:
     dataset.
     """
     input:
-        "results/datasets/{dataset}/mafs/{dataset}.{ref}_all{dp}_{sites}-filts.mafs.gz",
+        "results/datasets/{dataset}/mafs/{dataset}.{ref}_{population}{dp}_{sites}-filts.mafs.gz",
     output:
-        "results/datasets/{dataset}/filters/snps/{dataset}.{ref}{dp}_{sites}-filts_snps.sites",
+        "results/datasets/{dataset}/filters/snps/{dataset}.{ref}_{population}{dp}_{sites}-filts_snps.sites",
     log:
-        "logs/{dataset}/filters/snps/{dataset}.{ref}{dp}_{sites}-filts_snps.log",
+        "logs/{dataset}/filters/snps/{dataset}.{ref}_{population}{dp}_{sites}-filts_snps.log",
     benchmark:
-        "benchmarks/{dataset}/filters/snps/{dataset}.{ref}{dp}_{sites}-filts_snps.log"
+        "benchmarks/{dataset}/filters/snps/{dataset}.{ref}_{population}{dp}_{sites}-filts_snps.log"
     conda:
         "../envs/shell.yaml"
     shell:

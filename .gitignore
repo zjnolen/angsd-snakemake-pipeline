@@ -28,3 +28,5 @@ reports
 .devcontainer
 # ignore benchmarks
 benchmarks
+# documentation site
+site

@@ -10,7 +10,7 @@ plot_evaladmix <- function(pop,qopt,corres,k) {
 	source("/usr/local/bin/visFuns.R")
 
 	# read population labels and estimated admixture proportions
-	pop<-read.table(pop, header = TRUE)
+	pop<-read.table(pop, header = TRUE, sep = "\t")
 	pop
 	q<-read.table(qopt)
 	q
